@@ -152,7 +152,7 @@ if st.button('チェック開始', type="primary"):
         # ★★★ 修正箇所②: それぞれのシート名を使ってファイルを読み込む ★★★
         df_zenki = find_header_and_read_excel(uploaded_zenki, sheet_zenki, ['入社', '生年', '給与'])
         df_touki = find_header_and_read_excel(uploaded_touki, sheet_touki, ['入社', '生年', '給与'])
-        df_taishoku = find_header_and_read_excel(uploaded_taishoku, sheet_taishoku, ['入社', '生年', '給付'])
+        df_taishoku = find_header_and_read_excel(uploaded_taishoku, sheet_taishoku, ['入社', '生年'])
         
         if df_zenki is not None and df_touki is not None and df_taishoku is not None:
             result_excel = data_check_and_matching(
