@@ -5,7 +5,7 @@ from datetime import datetime
 import io
 
 # ------------------------------------------------------------------------------------
-# STEP 1: これまでColabで作成したデータ処理関数をここにすべてコピーします
+# STEP 1: データ処理関数 (この部分は変更ありません)
 # ------------------------------------------------------------------------------------
 
 def find_header_and_read_excel(file_path, sheet_name, keywords):
@@ -23,14 +23,14 @@ def find_header_and_read_excel(file_path, sheet_name, keywords):
                 break
         
         if header_row_index != -1:
-            st.info(f"📄 '{file_path.name}' のヘッダー行を {header_row_index + 1} 行目で発見しました。")
+            st.info(f"📄 '{file_path.name}' の '{sheet_name}' シートからヘッダーを {header_row_index + 1} 行目で発見しました。")
             df = pd.read_excel(file_path, sheet_name=sheet_name, header=header_row_index)
             return df
         else:
-            st.error(f"⚠️ '{file_path.name}' でヘッダー行が見つかりませんでした。")
+            st.error(f"⚠️ '{file_path.name}' の '{sheet_name}' シートでヘッダー行が見つかりませんでした。")
             return None
     except Exception as e:
-        st.error(f"❌エラー: '{file_path.name}' の読み込み中に問題が発生しました: {e}")
+        st.error(f"❌エラー: '{file_path.name}' の '{sheet_name}' シート読み込み中に問題が発生しました: {e}")
         return None
 
 def data_check_and_matching(df_zenki, df_touki, df_taishoku, col_nyusha, col_seinengappi, col_employee_id):
@@ -112,14 +112,13 @@ def data_check_and_matching(df_zenki, df_touki, df_taishoku, col_nyusha, col_sei
     
     return processed_data
 
-
 # ------------------------------------------------------------------------------------
-# STEP 2: Streamlitを使ってWebアプリの見た目（UI）を作成します
+# STEP 2: StreamlitのUI部分
 # ------------------------------------------------------------------------------------
 
 st.set_page_config(page_title="退職給付債務データチェック", layout="wide")
 
-st.title('退職給付債務データチェックアプリ retirement benefit obligations')
+st.title('退職給付債務データチェックアプリ')
 
 st.write("""
 このアプリは、前期末・当期末・退職者のExcelデータをアップロードすることで、\n
@@ -129,7 +128,10 @@ st.write("""
 # --- サイドバーに設定項目を作成 ---
 with st.sidebar:
     st.header("1. ファイル設定")
-    sheet_name = st.text_input("シート名を入力してください", "data")
+    # ★★★ 修正箇所①: シート名入力を3つに分割 ★★★
+    sheet_zenki = st.text_input("① 前期末データのシート名", "data")
+    sheet_touki = st.text_input("② 当期末データのシート名", "data")
+    sheet_taishoku = st.text_input("③ 退職者データのシート名", "data")
     
     st.header("2. 列名設定")
     col_employee_id = st.text_input("従業員番号の列名", "従業員番号")
@@ -145,17 +147,14 @@ uploaded_taishoku = st.file_uploader("③ 当期退職者データ", type=['xlsx
 
 # --- チェック開始ボタンと処理 ---
 if st.button('チェック開始', type="primary"):
-    # 3つのファイルがすべてアップロードされているか確認
     if uploaded_zenki and uploaded_touki and uploaded_taishoku:
         
-        # ファイル読み込み
-        df_zenki = find_header_and_read_excel(uploaded_zenki, sheet_name, ['入社', '生年', '給与'])
-        df_touki = find_header_and_read_excel(uploaded_touki, sheet_name, ['入社', '生年', '給与'])
-        df_taishoku = find_header_and_read_excel(uploaded_taishoku, sheet_name, ['入社', '生年'])
+        # ★★★ 修正箇所②: それぞれのシート名を使ってファイルを読み込む ★★★
+        df_zenki = find_header_and_read_excel(uploaded_zenki, sheet_zenki, ['入社', '生年', '給与'])
+        df_touki = find_header_and_read_excel(uploaded_touki, sheet_touki, ['入社', '生年', '給与'])
+        df_taishoku = find_header_and_read_excel(uploaded_taishoku, sheet_taishoku, ['入社', '生年', '給付'])
         
-        # 3つのデータが正しく読み込めた場合のみ処理を実行
         if df_zenki is not None and df_touki is not None and df_taishoku is not None:
-            # メインのデータ処理関数を実行
             result_excel = data_check_and_matching(
                 df_zenki, df_touki, df_taishoku,
                 col_nyusha, col_seinengappi, col_employee_id
@@ -163,7 +162,6 @@ if st.button('チェック開始', type="primary"):
             
             st.header("🎉 処理が完了しました！")
             
-            # ダウンロードボタンを表示
             st.download_button(
                 label="📥 結果をExcelファイルでダウンロード",
                 data=result_excel,
