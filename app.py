@@ -61,8 +61,8 @@ def main():
         col_emp_id = st.text_input("従業員番号の列名", "従業員番号")
         col_hire_date = st.text_input("入社年月日の列名", "入社年月日")
         col_birth_date = st.text_input("生年月日の列名", "生年月日")
-        col_salary1 = st.text_input("給与1の列名（当期・前期比較用）", "給与1")
-        col_salary2 = st.text_input("給与2の列名（累計チェック用）", "給与2")
+        col_salary1 = st.text_input("給与1の列名（当期・前期比較用）", "給与１")
+        col_salary2 = st.text_input("給与2の列名（累計チェック用）", "給与２")
 
         st.header("✔️ 追加エラーチェック設定")
         
