@@ -1,8 +1,9 @@
 # xlsxwriterがないと言われた場合は次を実行
-!pip install XlsxWriter
+pip install XlsxWriter
 
 import streamlit as st
 import pandas as pd
+import numpy as np
 import io
 from datetime import datetime
 
