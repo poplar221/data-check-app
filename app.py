@@ -64,8 +64,8 @@ def main():
         col_emp_id = st.text_input("従業員番号の列名", "従業員番号")
         col_hire_date = st.text_input("入社年月日の列名", "入社年月日")
         col_birth_date = st.text_input("生年月日の列名", "生年月日")
-        col_salary1 = st.text_input("給与1の列名（当期・前期比較用）", "給与1")
-        col_salary2 = st.text_input("給与2の列名（累計チェック用）", "給与2")
+        col_salary1 = st.text_input("給与1の列名（当期・前期比較用）", "給与１")
+        col_salary2 = st.text_input("給与2の列名（累計チェック用）", "給与２")
 
         st.header("✔️ 追加エラーチェック設定")
         
@@ -212,7 +212,7 @@ def main():
                         check_df = continuing_employees.dropna(subset=required_salary_cols).copy()
 
                         if check_salary_decrease:
-                            results['給与減額'] = check_df[check_df[f'{col_salary1}_当期'] < check_df[f'{col_salary1}_前期']]
+                            results['給与減額エラー'] = check_df[check_df[f'{col_salary1}_当期'] < check_df[f'{col_salary1}_前期']]
 
                         if check_salary_increase:
                             try:
@@ -224,7 +224,7 @@ def main():
                         if check_cumulative_salary:
                             try:
                                 y = int(months_y)
-                                results['累計給与エラー'] = check_df[check_df[f'{col_salary2}_当期'] < check_df[f'{col_salary2}_前期'] + check_df[f'{col_salary1}_前期'] * y]
+                                results['累計給与エラー1'] = check_df[check_df[f'{col_salary2}_当期'] < check_df[f'{col_salary2}_前期'] + check_df[f'{col_salary1}_前期'] * y]
                             except ValueError:
                                 st.warning("月数(y)が無効な数値です。このチェックはスキップされました。")
                         
@@ -271,9 +271,9 @@ def main():
                 "退職者候補（不突合）": len(results.get('退職者候補（退職者データ不突合）', [])),
                 "入社者候補": len(results.get('入社者候補', [])),
                 "退職者データ過剰": len(results.get('退職者データ過剰（前期末データ不突合）', [])),
-                "給与減額": len(results.get('給与減額', [])),
+                "給与減額エラー": len(results.get('給与減額エラー', [])),
                 "給与増加率エラー": len(results.get('給与増加率エラー', [])),
-                "累計給与エラー": len(results.get('累計給与エラー', [])),
+                "累計給与エラー1": len(results.get('累計給与エラー1', [])),
                 "累計給与エラー2": len(results.get('累計給与エラー2', [])),
             }
 
