@@ -262,7 +262,6 @@ def main():
                         summary_list.append(('└ 許容率(z)%', allowance_rate_z))
                     summary_list.append(('', ''))
                     
-                    # --- ▼▼▼ ここから変更 ▼▼▼ ---
                     # 2. チェック結果サマリーを、指定された順序でリストに追加
                     summary_list.append(('--- チェック結果サマリー ---', ''))
                     info_labels = ["前期末従業員数", "当期末従業員数", "在籍者数", "当期退職者数"]
@@ -271,6 +270,7 @@ def main():
                         unit = "人" if label in info_labels else "件"
                         return f"{value} {unit}"
 
+                    # --- ▼▼▼ ここから修正 ▼▼▼ ---
                     # 2-1. 基本情報と、指定された順序の項目
                     summary_list.append(('前期末従業員数', format_value('前期末従業員数', summary_metrics.get('前期末従業員数', 0))))
                     summary_list.append(('当期末従業員数', format_value('当期末従業員数', summary_metrics.get('当期末従業員数', 0))))
@@ -292,10 +292,9 @@ def main():
                     summary_list.append(('日付妥当性エラー', format_value('日付妥当性エラー', summary_metrics.get('日付妥当性エラー', 0))))
                     summary_list.append(('給与減額エラー', format_value('給与減額エラー', summary_metrics.get('給与減額エラー', 0))))
                     summary_list.append(('給与増加率エラー', format_value('給与増加率エラー', summary_metrics.get('給与増加率エラー', 0))))
-                    summary_list.append(('累計給与エラー1', format_value('累計給与エラー1', summary_metrics.get('累計給여エラー1', 0))))
+                    summary_list.append(('累計給与エラー1', format_value('累計給与エラー1', summary_metrics.get('累計給与エラー1', 0))))
                     summary_list.append(('累計給与エラー2', format_value('累計給与エラー2', summary_metrics.get('累計給与エラー2', 0))))
-                    
-                    # --- ▲▲▲ ここまで変更 ▲▲▲ ---
+                    # --- ▲▲▲ ここまで修正 ▲▲▲ ---
                     
                     df_summary = pd.DataFrame(summary_list, columns=['項目', '設定・結果'])
 
