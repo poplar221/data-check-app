@@ -18,7 +18,6 @@ def find_header_and_read_excel(file_path, sheet_name, keywords):
     if file_path is None:
         return None
     try:
-        # ExcelFileオブジェクトとして開くことで、シートの存在を確認しやすくする
         xls = pd.ExcelFile(file_path)
         if sheet_name not in xls.sheet_names:
             st.error(f"⚠️ '{file_path.name}' に '{sheet_name}' という名前のシートが見つかりません。")
@@ -43,6 +42,19 @@ def find_header_and_read_excel(file_path, sheet_name, keywords):
         st.error(f"❌エラー: '{file_path.name}' の '{sheet_name}' シート読み込み中に問題が発生しました: {e}")
         return None
 
+# ★★★ 修正箇所: 日付を「文字列」としてフォーマットするように変更 ★★★
+def format_date_columns(df, date_cols):
+    """
+    指定された日付列をYYYYMMDD形式の文字列に変換する
+    """
+    df_copy = df.copy()
+    for col in date_cols:
+        if col in df_copy.columns and pd.api.types.is_datetime64_any_dtype(df_copy[col]):
+            # NaTは空文字に、それ以外はYYYYMMDD形式の文字列に変換
+            df_copy[col] = df_copy[col].dt.strftime('%Y%m%d').fillna('')
+    return df_copy
+
+
 def data_check_and_matching(df_zenki, df_touki, df_taishoku, col_employee_id, col_nyusha, col_seinengappi, col_salary1, col_salary2, error_check_config):
     """
     データチェックとマッチング処理を行い、結果をExcelファイルとしてメモリ上に保存し、
@@ -60,29 +72,32 @@ def data_check_and_matching(df_zenki, df_touki, df_taishoku, col_employee_id, co
         
         all_dfs = [dfz, dft, dftai]
         
-        # 給与列を数値に変換
         for df in [dfz, dft]:
             if col_salary1 in df.columns:
                 df[col_salary1] = pd.to_numeric(df[col_salary1], errors='coerce')
             if col_salary2 in df.columns:
                 df[col_salary2] = pd.to_numeric(df[col_salary2], errors='coerce')
 
-        # 日付列を日付型に変換
         for df in all_dfs:
-            if col_nyusha in df.columns and col_seinengappi in df.columns:
+            if col_nyusha in df.columns:
                 df[col_nyusha] = pd.to_datetime(df[col_nyusha].astype(str), errors='coerce')
+            if col_seinengappi in df.columns:
                 df[col_seinengappi] = pd.to_datetime(df[col_seinengappi].astype(str), errors='coerce')
+            if '退職年月日' in df.columns:
+                 df['退職年月日'] = pd.to_datetime(df['退職年月日'].astype(str), errors='coerce')
+            if '支給日' in df.columns:
+                 df['支給日'] = pd.to_datetime(df['支給日'].astype(str), errors='coerce')
 
-        # キーの作成
         if col_employee_id in dfz.columns and col_employee_id in dft.columns and col_employee_id in dftai.columns:
             st.info(f"🔑 「{col_employee_id}」をキーとして使用します。")
             for df in all_dfs:
-                df['key'] = df[col_employee_id].astype(str)
+                if 'key' not in df.columns:
+                    df['key'] = df[col_employee_id].astype(str)
         else:
             st.info(f"🔑 「入社年月日」と「生年月日」の連結文字列をキーとして使用します。")
             for df in all_dfs:
-                if col_nyusha in df.columns and col_seinengappi in df.columns:
-                    df['key'] = df[col_nyusha].dt.strftime('%Y%m%d') + '_' + df[col_seinengappi].dt.strftime('%Y%m%d')
+                if 'key' not in df.columns and col_nyusha in df.columns and col_seinengappi in df.columns:
+                    df['key'] = df[col_nyusha].dt.strftime('%Y%m%d').astype(str).str.cat(df[col_seinengappi].dt.strftime('%Y%m%d').astype(str), sep='_')
         st.success("✅ キーの作成が完了しました。")
 
     with st.spinner("STEP 2: 基本エラーチェックを実行中..."):
@@ -94,34 +109,33 @@ def data_check_and_matching(df_zenki, df_touki, df_taishoku, col_employee_id, co
         zenki_age_errors = pd.DataFrame()
         touki_age_errors = pd.DataFrame()
         if col_nyusha in dfz.columns and col_seinengappi in dfz.columns:
-            # NaTでない行のみ計算
             valid_dates_z = dfz.dropna(subset=[col_nyusha, col_seinengappi])
-            days_diff_z = (valid_dates_z[col_nyusha] - valid_dates_z[col_seinengappi]).dt.days
-            dfz.loc[valid_dates_z.index, 'age_at_hire'] = (days_diff_z / 365.25).astype(int)
-            zenki_age_errors = dfz[(dfz['age_at_hire'] < 15) | (dfz['age_at_hire'] >= 90)]
+            if not valid_dates_z.empty:
+                days_diff_z = (valid_dates_z[col_nyusha] - valid_dates_z[col_seinengappi]).dt.days
+                dfz.loc[valid_dates_z.index, 'age_at_hire'] = (days_diff_z / 365.25)
+                zenki_age_errors = dfz[(dfz['age_at_hire'] < 15) | (dfz['age_at_hire'] >= 90)]
 
         if col_nyusha in dft.columns and col_seinengappi in dft.columns:
             valid_dates_t = dft.dropna(subset=[col_nyusha, col_seinengappi])
-            days_diff_t = (valid_dates_t[col_nyusha] - valid_dates_t[col_seinengappi]).dt.days
-            dft.loc[valid_dates_t.index, 'age_at_hire'] = (days_diff_t / 365.25).astype(int)
-            touki_age_errors = dft[(dft['age_at_hire'] < 15) | (dft['age_at_hire'] >= 90)]
+            if not valid_dates_t.empty:
+                days_diff_t = (valid_dates_t[col_nyusha] - valid_dates_t[col_seinengappi]).dt.days
+                dft.loc[valid_dates_t.index, 'age_at_hire'] = (days_diff_t / 365.25)
+                touki_age_errors = dft[(dft['age_at_hire'] < 15) | (dft['age_at_hire'] >= 90)]
         summary['zenki_age_errors'] = len(zenki_age_errors)
         summary['touki_age_errors'] = len(touki_age_errors)
         st.success("✅ 基本エラーチェックが完了しました。")
     
     with st.spinner("STEP 3: 在籍者・退職者マッチングを実行中..."):
-        # 在籍者照合
         merged_df = pd.merge(dfz, dft, on='key', how='outer', indicator=True, suffixes=('_zenki', '_touki'))
         
         only_zenki_full = merged_df[merged_df['_merge'] == 'left_only']
         only_touki_full = merged_df[merged_df['_merge'] == 'right_only']
         both_full = merged_df[merged_df['_merge'] == 'both']
 
-        summary['only_zenki'] = len(only_zenki_full) # 退職者候補
-        summary['only_touki'] = len(only_touki_full) # 入社者
-        summary['both'] = len(both_full) # 在籍者
+        summary['only_zenki'] = len(only_zenki_full)
+        summary['only_touki'] = len(only_touki_full)
+        summary['both'] = len(both_full)
 
-        # 退職者照合
         retiree_merged = pd.merge(only_zenki_full[['key']], dftai[['key']], on='key', how='outer', indicator='retiree_check')
         retiree_missing_keys = retiree_merged[retiree_merged['retiree_check'] == 'left_only']
         retiree_not_candidate_keys = retiree_merged[retiree_merged['retiree_check'] == 'right_only']
@@ -170,22 +184,34 @@ def data_check_and_matching(df_zenki, df_touki, df_taishoku, col_employee_id, co
         st.success("✅ 追加エラーチェックが完了しました。")
 
     with st.spinner("STEP 5: 結果をExcelファイルに出力中..."):
+        date_columns_to_format = [
+            col_nyusha, col_seinengappi, "退職年月日", "支給日",
+            f"{col_nyusha}_zenki", f"{col_nyusha}_touki",
+            f"{col_seinengappi}_zenki", f"{col_seinengappi}_touki"
+        ]
+        
+        result_dfs = {
+            "前期末_キー重複": zenki_duplicates,
+            "当期末_キー重複": touki_duplicates,
+            "前期末_日付エラー": zenki_age_errors,
+            "当期末_日付エラー": touki_age_errors,
+            "在籍照合_前期のみ(退職者候補)": only_zenki_full,
+            "在籍照合_当期のみ(入社者)": only_touki_full,
+            "在籍照合_両方(在籍者)": both_full,
+            "退職者照合_データ不在": retiree_missing_full,
+            "退職者照合_候補でない": retiree_not_candidate_full,
+            "退職者照合_一致": retiree_correct_full,
+            "給与減額チェック": salary_decrease,
+            "給与増加率チェック": salary_increase_rate,
+            "累計給与チェック": cumulative_salary_check,
+            "累計給与チェック2": cumulative_salary_check2
+        }
+
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            zenki_duplicates.to_excel(writer, sheet_name='前期末_キー重複', index=False)
-            touki_duplicates.to_excel(writer, sheet_name='当期末_キー重複', index=False)
-            zenki_age_errors.to_excel(writer, sheet_name='前期末_日付エラー', index=False)
-            touki_age_errors.to_excel(writer, sheet_name='当期末_日付エラー', index=False)
-            only_zenki_full.to_excel(writer, sheet_name='在籍照合_前期のみ(退職者候補)', index=False)
-            only_touki_full.to_excel(writer, sheet_name='在籍照合_当期のみ(入社者)', index=False)
-            both_full.to_excel(writer, sheet_name='在籍照合_両方(在籍者)', index=False)
-            retiree_missing_full.to_excel(writer, sheet_name='退職者照合_データ不在', index=False)
-            retiree_not_candidate_full.to_excel(writer, sheet_name='退職者照合_候補でない', index=False)
-            retiree_correct_full.to_excel(writer, sheet_name='退職者照合_一致', index=False)
-            salary_decrease.to_excel(writer, sheet_name='給与減額チェック', index=False)
-            salary_increase_rate.to_excel(writer, sheet_name='給与増加率チェック', index=False)
-            cumulative_salary_check.to_excel(writer, sheet_name='累計給与チェック', index=False)
-            cumulative_salary_check2.to_excel(writer, sheet_name='累計給与チェック2', index=False)
+            for sheet_name, df_to_write in result_dfs.items():
+                formatted_df = format_date_columns(df_to_write, date_columns_to_format)
+                formatted_df.to_excel(writer, sheet_name=sheet_name, index=False)
         
         processed_data = output.getvalue()
         st.success("✅ Excelファイルの出力準備が完了しました！")
@@ -205,7 +231,6 @@ st.write("""
 データの不整合やエラーを自動でチェックし、結果をExcelファイルとして出力します。
 """)
 
-# --- サイドバー ---
 with st.sidebar:
     st.header("⚙️ データ指定設定")
     
@@ -218,8 +243,8 @@ with st.sidebar:
     col_employee_id = st.text_input("従業員番号の列名", "従業員番号")
     col_nyusha = st.text_input("入社年月日の列名", "入社年月日")
     col_seinengappi = st.text_input("生年月日の列名", "生年月日")
-    col_salary1 = st.text_input("給与1の列名", "給与１") # サンプルファイルに合わせる
-    col_salary2 = st.text_input("給与2の列名", "給与２") # サンプルファイルに合わせる
+    col_salary1 = st.text_input("給与1の列名", "給与１")
+    col_salary2 = st.text_input("給与2の列名", "給与２")
     
     st.header("🔍 エラーチェック設定")
     
@@ -228,7 +253,7 @@ with st.sidebar:
     salary_increase_rate_check = st.checkbox("給与増加率チェック", value=True)
     x_rate = st.number_input("増加率(x) %", min_value=0.0, value=5.0, step=1.0, format="%.1f")
     cumulative_salary_check = st.checkbox("累計給与チェック", value=True)
-    y_months = st.number_input("月数(y)", min_value=0, max_value=12, value=1, step=11)
+    y_months = st.selectbox("月数(y)", [1, 12], index=0)
     cumulative_salary_check2 = st.checkbox("累計給与チェック2", value=True)
     z_rate = st.number_input("超過率(z) %", min_value=0.0, value=0.0, step=1.0, format="%.1f")
     
@@ -242,14 +267,11 @@ with st.sidebar:
         "z_rate": z_rate,
     }
 
-# --- メイン画面 ---
 st.header("📂 Excelファイルをアップロード")
 uploaded_zenki = st.file_uploader("① 前期末従業員データ", type=['xlsx', 'xls'])
 uploaded_touki = st.file_uploader("② 当期末従業員データ", type=['xlsx', 'xls'])
 uploaded_taishoku = st.file_uploader("③ 当期退職者データ", type=['xlsx', 'xls'])
 
-
-# --- 実行ボタンと処理ロジック ---
 if st.button('チェック開始', type="primary", use_container_width=True):
     if uploaded_zenki and uploaded_touki and uploaded_taishoku:
         
