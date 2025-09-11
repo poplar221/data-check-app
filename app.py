@@ -243,26 +243,45 @@ def main():
                     # --- 結果の出力準備 ---
                     st.info("ステップ6/7: 結果をExcelファイルにまとめています...")
                     
+                    # --- ▼▼▼ ここから変更 ▼▼▼ ---
+                    
                     # 1. サマリーシート用のデータを作成
                     summary_list = []
+
+                    # アプリ情報と作業日時を追加
+                    app_title = "退職給付債務計算のための従業員データチェッカー"
+                    work_time = datetime.now(tz=ZoneInfo("Asia/Tokyo")).strftime('%Y年%m月%d日 %H:%M:%S JST')
+                    
+                    summary_list.append(('アプリタイトル', app_title))
+                    summary_list.append(('アプリ最終更新日時', last_updated)) # main関数冒頭で定義済み
+                    summary_list.append(('作業日時', work_time))
+                    summary_list.append(('', ''))  # 空行
+
+                    # アップロードしたファイル名を追加
                     summary_list.append(('--- アップロードファイル ---', ''))
                     summary_list.append(('前期末従業員データ', file_prev.name))
                     summary_list.append(('当期末従業員データ', file_curr.name))
                     if file_retire:
                         summary_list.append(('当期退職者データ', file_retire.name))
-                    summary_list.append(('', ''))
+                    summary_list.append(('', ''))  # 空行
+
+                    # ファイル設定を追加
                     summary_list.append(('--- ファイル設定 ---', ''))
                     summary_list.append(('前期末データのシート名', sheet_prev))
                     summary_list.append(('当期末データのシート名', sheet_curr))
                     summary_list.append(('退職者データのシート名', sheet_retire))
-                    summary_list.append(('', ''))
+                    summary_list.append(('', ''))  # 空行
+
+                    # 列名設定を追加
                     summary_list.append(('--- 列名設定 ---', ''))
                     summary_list.append(('従業員番号の列名', col_emp_id))
                     summary_list.append(('入社年月日の列名', col_hire_date))
                     summary_list.append(('生年月日の列名', col_birth_date))
                     summary_list.append(('給与1の列名', col_salary1))
                     summary_list.append(('給与2の列名', col_salary2))
-                    summary_list.append(('', ''))
+                    summary_list.append(('', ''))  # 空行
+
+                    # 追加エラーチェック設定を追加
                     summary_list.append(('--- 追加エラーチェック設定 ---', ''))
                     summary_list.append(('給与減額チェック', '有効' if check_salary_decrease else '無効'))
                     summary_list.append(('給与増加率チェック', '有効' if check_salary_increase else '無効'))
@@ -274,7 +293,7 @@ def main():
                     summary_list.append(('累計給与チェック2', '有効' if check_cumulative_salary2 else '無効'))
                     if check_cumulative_salary2:
                         summary_list.append(('└ 許容率(z)%', allowance_rate_z))
-                    summary_list.append(('', ''))
+                    summary_list.append(('', ''))  # 空行
                     
                     # 2. チェック結果サマリーを、指定された順序でリストに追加
                     summary_list.append(('--- チェック結果サマリー ---', ''))
@@ -284,7 +303,6 @@ def main():
                         unit = "人" if label in info_labels else "件"
                         return f"{value} {unit}"
 
-                    # --- ▼▼▼ ここから修正 ▼▼▼ ---
                     # 2-1. 基本情報と、指定された順序の項目
                     summary_list.append(('前期末従業員数', format_value('前期末従業員数', summary_metrics.get('前期末従業員数', 0))))
                     summary_list.append(('当期末従業員数', format_value('当期末従業員数', summary_metrics.get('当期末従業員数', 0))))
@@ -308,7 +326,6 @@ def main():
                     summary_list.append(('給与増加率エラー', format_value('給与増加率エラー', summary_metrics.get('給与増加率エラー', 0))))
                     summary_list.append(('累計給与エラー1', format_value('累計給与エラー1', summary_metrics.get('累計給与エラー1', 0))))
                     summary_list.append(('累計給与エラー2', format_value('累計給与エラー2', summary_metrics.get('累計給与エラー2', 0))))
-                    # --- ▲▲▲ ここまで修正 ▲▲▲ ---
                     
                     df_summary = pd.DataFrame(summary_list, columns=['項目', '設定・結果'])
 
@@ -325,6 +342,9 @@ def main():
                                 df_to_write.to_excel(writer, sheet_name=sheet_name, index=False)
                     
                     processed_data = output.getvalue()
+
+                    # --- ▲▲▲ ここまで変更 ▲▲▲ ---
+
                     st.info("ステップ7/7: 処理が完了しました。")
 
                 except Exception as e:
