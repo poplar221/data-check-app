@@ -9,7 +9,6 @@ def find_header_and_read_excel(uploaded_file, sheet_name, keywords=['入社', '�
     """
     Excelファイルからキーワードを含む行をヘッダーとして特定し、データを読み込む関数。
     """
-    # seek(0)は複数回ファイルを読み込む際に必須
     if uploaded_file:
         uploaded_file.seek(0)
     try:
@@ -62,8 +61,6 @@ def main():
     with st.sidebar:
         st.header("⚙️ データ指定設定")
         st.subheader("ファイル設定")
-        # --- シート名選択 ---
-        # (前回の修正と同様のロジック)
         if file_prev:
             try:
                 sheets = pd.ExcelFile(file_prev).sheet_names
@@ -97,25 +94,25 @@ def main():
         else:
             sheet_retire = st.text_input("退職者データのシート名", "退職者データフォーマット")
 
-        # --- ▼▼▼ ここから構造を変更 ▼▼▼ ---
+        # --- ▼▼▼ ここから修正 ▼▼▼ ---
         st.subheader("列名設定")
-        # 前期末ファイルとシートが選択されている場合のみ、列名を動的に読み込む
+        NONE_OPTION = "(選択しない)"
+
         if file_prev and sheet_prev:
             try:
-                # ヘッダーを読んで列名リストを取得
                 df_for_columns = find_header_and_read_excel(file_prev, sheet_prev)
                 if df_for_columns is not None:
                     columns = df_for_columns.columns.tolist()
+                    options = [NONE_OPTION] + columns
 
-                    # 候補の中からデフォルト値を探すヘルパー関数
                     def get_default_index(target_col_name):
-                        return columns.index(target_col_name) if target_col_name in columns else 0
+                        return options.index(target_col_name) if target_col_name in options else 0
                     
-                    col_emp_id = st.selectbox("従業員番号の列を選択", options=columns, index=get_default_index("従業員番号"))
-                    col_hire_date = st.selectbox("入社年月日の列を選択", options=columns, index=get_default_index("入社年月日"))
-                    col_birth_date = st.selectbox("生年月日の列を選択", options=columns, index=get_default_index("生年月日"))
-                    col_salary1 = st.selectbox("給与1の列を選択", options=columns, index=get_default_index("給与1"))
-                    col_salary2 = st.selectbox("給与2の列を選択", options=columns, index=get_default_index("給与2"))
+                    col_emp_id = st.selectbox("従業員番号の列を選択", options=options, index=get_default_index("従業員番号"))
+                    col_hire_date = st.selectbox("入社年月日の列を選択", options=options, index=get_default_index("入社年月日"))
+                    col_birth_date = st.selectbox("生年月日の列を選択", options=options, index=get_default_index("生年月日"))
+                    col_salary1 = st.selectbox("給与1の列を選択", options=options, index=get_default_index("給与1"))
+                    col_salary2 = st.selectbox("給与2の列を選択", options=options, index=get_default_index("給与2"))
                 else:
                     st.warning("前期末データの列名が読み込めません。手動で入力してください。")
                     col_emp_id = st.text_input("従業員番号の列名", "従業員番号")
@@ -123,11 +120,9 @@ def main():
                     col_birth_date = st.text_input("生年月日の列名", "生年月日")
                     col_salary1 = st.text_input("給与1の列名", "給与1")
                     col_salary2 = st.text_input("給与2の列名", "給与2")
-
             except Exception as e:
                 st.error(f"列名読込中にエラー: {e}")
         else:
-            # ファイル未選択時は、従来の手入力
             st.info("前期末データをアップロードしシートを選択すると、列名をドロップダウンで選択できます。")
             col_emp_id = st.text_input("従業員番号の列名", "従業員番号")
             col_hire_date = st.text_input("入社年月日の列名", "入社年月日")
@@ -135,7 +130,7 @@ def main():
             col_salary1 = st.text_input("給与1の列名（当期・前期比較用）", "給与1")
             col_salary2 = st.text_input("給与2の列名（累計チェック用）", "給与2")
         
-        # --- ▲▲▲ ここまで構造を変更 ▲▲▲ ---
+        # --- ▲▲▲ ここまで修正 ▲▲▲ ---
         
         st.header("✔️ 追加エラーチェック設定")
         check_salary_decrease = st.checkbox("給与減額チェックを有効にする", True)
@@ -150,7 +145,9 @@ def main():
         if file_prev and file_curr:
             with st.spinner('データチェックを実行中です...'):
                 try:
-                    # (これ以降のメイン処理ロジックは変更なし)
+                    # (これ以降のメイン処理ロジックは変更なし。
+                    # col_emp_idが"(選択しない)"の場合、use_emp_id_keyの判定が自動的にFalseになり、
+                    # 代替キーが使われる。)
                     st.info("ステップ1/7: Excelファイルを読み込んでいます...")
                     df_prev = find_header_and_read_excel(file_prev, sheet_prev)
                     df_curr = find_header_and_read_excel(file_curr, sheet_curr)
