@@ -3,6 +3,7 @@ import pandas as pd
 import io
 from datetime import datetime
 import os # 追加
+from zoneinfo import ZoneInfo # 追加
 
 def find_header_and_read_excel(uploaded_file, sheet_name, keywords=['入社', '生年']):
     """
@@ -50,7 +51,10 @@ def main():
     # app.pyファイルの最終更新日時を取得して表示
     try:
         mod_time = os.path.getmtime(__file__)
-        last_updated = datetime.fromtimestamp(mod_time).strftime('%Y年%m月%d日 %H:%M:%S')
+        # タイムスタンプを直接JSTに変換
+        jst_time = datetime.fromtimestamp(mod_time, tz=ZoneInfo("Asia/Tokyo"))
+        # 表示形式に "JST" を追加
+        last_updated = jst_time.strftime('%Y年%m月%d日 %H:%M:%S JST')
         st.caption(f"最終更新日時: {last_updated}")
     except Exception:
         # ローカル環境などでパスが取得できない場合のエラーを無視
