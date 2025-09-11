@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 from datetime import datetime
+import os # 追加
 
 def find_header_and_read_excel(uploaded_file, sheet_name, keywords=['入社', '生年']):
     """
@@ -46,6 +47,15 @@ def main():
     st.set_page_config(layout="wide")
 
     st.title("退職給付債務計算のための従業員データチェッカー")
+    # app.pyファイルの最終更新日時を取得して表示
+    try:
+        mod_time = os.path.getmtime(__file__)
+        last_updated = datetime.fromtimestamp(mod_time).strftime('%Y年%m月%d日 %H:%M:%S')
+        st.caption(f"最終更新日時: {last_updated}")
+    except Exception:
+        # ローカル環境などでパスが取得できない場合のエラーを無視
+        pass
+    
     st.write("前期末、当期末、退職者の従業員データ（Excelファイル）をアップロードして、データの整合性チェックを行います。")
 
     # --- サイドバーの設定 ---
