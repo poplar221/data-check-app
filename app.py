@@ -132,15 +132,35 @@ def main():
         # 退職者データのシート名選択（従来通り）
         sheet_retire = st.text_input("退職者データのシート名", "退職者データフォーマット")
         
+        # --- ▼▼▼ ここから修正 ▼▼▼ ---
         st.header("✔️ 追加エラーチェック設定")
-        check_salary_decrease = st.checkbox("給与減額チェックを有効にする", True)
-        # (以下、変更なし)
-        check_salary_increase = st.checkbox("給与増加率チェックを有効にする", True)
+        
+        check_salary_decrease = st.checkbox(
+            "給与減額チェックを有効にする", 
+            value=True,
+            help="在籍者のうち、当期末の給与1が前期末の給与1よりも減少している従業員を検出します。"
+        )
+        check_salary_increase = st.checkbox(
+            "給与増加率チェックを有効にする", 
+            value=True,
+            help="在籍者のうち、当期末の給与1が前期末の給与1に比べて、指定した増加率（x%）以上に増加している従業員を検出します。"
+        )
         increase_rate_x = st.text_input("増加率(x)%", value="5")
-        check_cumulative_salary = st.checkbox("累計給与チェック1を有効にする", True)
+
+        check_cumulative_salary = st.checkbox(
+            "累計給与チェック1を有効にする", 
+            value=True,
+            help="在籍者のうち、当期末の累計給与2が「前期末の累計給与2 + 前期末の給与1 × 月数(y)」の計算結果よりも少ない従業員を検出します。給与の累計が期待通りに行われているかを確認します。"
+        )
         months_y = st.selectbox("月数(y)", ("1", "12"), index=0)
-        check_cumulative_salary2 = st.checkbox("累計給与チェック2を有効にする", True)
+
+        check_cumulative_salary2 = st.checkbox(
+            "累計給与チェック2を有効にする", 
+            value=True,
+            help="在籍者のうち、当期末の累計給与2が「(前期末の累計給与2 + 前期末の給与1 × 月数(y)) × (1 + 許容率(z)%))」の計算結果よりも多い従業員を検出します。累計額が想定を大幅に超えていないかを確認します。"
+        )
         allowance_rate_z = st.text_input("許容率(z)%", value="0")
+        # --- ▲▲▲ ここまで修正 ▲▲▲ ---
 
     # --- 退職者ファイルアップローダーを、退職日列の選択状態に応じて無効化 ---
     retire_uploader_disabled = (col_retire_date != NONE_OPTION)
