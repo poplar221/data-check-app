@@ -49,27 +49,36 @@ def main():
     
     st.write("前期末、当期末、退職者の従業員データ（Excelファイル）をアップロードして、データの整合性チェックを行います。")
 
-    st.subheader("📁 ファイルのアップロード")
+    # --- メイン画面のUI定義 ---
+    st.subheader("📁 ファイルのアップロードとヘッダーキーワードの設定")
     col1, col2, col3 = st.columns(3)
-    with col1:
-        file_prev = st.file_uploader("1. 前期末従業員データ (必須)", type=['xlsx'])
-    with col2:
-        file_curr = st.file_uploader("2. 当期末従業員データ (必須)", type=['xlsx'])
     
+    # --- ▼▼▼ ここから修正 ▼▼▼ ---
+    with col1:
+        st.markdown("##### 1. 前期末従業員データ (必須)")
+        file_prev = st.file_uploader("アップロード", type=['xlsx'], key="up_prev", label_visibility="collapsed")
+        st.markdown("###### ヘッダー行 特定キーワード")
+        keyword_prev_1 = st.text_input("キーワード1", "入社", key="kw_p1")
+        keyword_prev_2 = st.text_input("キーワード2", "生年", key="kw_p2")
+
+    with col2:
+        st.markdown("##### 2. 当期末従業員データ (必須)")
+        file_curr = st.file_uploader("アップロード", type=['xlsx'], key="up_curr", label_visibility="collapsed")
+        st.markdown("###### ヘッダー行 特定キーワード")
+        keyword_curr_1 = st.text_input("キーワード1", "入社", key="kw_c1")
+        keyword_curr_2 = st.text_input("キーワード2", "生年", key="kw_c2")
+
+    # 各ファイル用のキーワードリストを作成
+    keywords_prev = [k for k in [keyword_prev_1, keyword_prev_2] if k]
+    keywords_curr = [k for k in [keyword_curr_1, keyword_curr_2] if k]
+    
+    # --- サイドバーで設定 ---
     with st.sidebar:
         st.header("⚙️ データ指定設定")
         st.subheader("ファイル設定")
-        
-        # --- ▼▼▼ ここから修正 ▼▼▼ ---
-        st.markdown("##### ヘッダー行 特定キーワード")
-        keyword1 = st.text_input("キーワード1", "入社")
-        keyword2 = st.text_input("キーワード2", "生年")
-        header_keywords = [k for k in [keyword1, keyword2] if k] # 空のキーワードを除外
-        
-        st.markdown("---")
-        st.markdown("##### シート名設定")
-        # --- ▲▲▲ ここまで修正 ▲▲▲ ---
 
+        # サイドバーからはキーワード設定を削除
+        st.markdown("##### シート名設定")
         if file_prev:
             try:
                 sheets = pd.ExcelFile(file_prev).sheet_names
@@ -97,15 +106,13 @@ def main():
         columns_prev, columns_curr = [], []
         if file_prev and sheet_prev:
             try:
-                # --- ▼▼▼ 修正: キーワードを渡す ▼▼▼ ---
-                df_cols = find_header_and_read_excel(file_prev, sheet_prev, keywords=header_keywords)
+                df_cols = find_header_and_read_excel(file_prev, sheet_prev, keywords=keywords_prev)
                 if df_cols is not None:
                     columns_prev = df_cols.columns.tolist()
             except Exception: pass
         if file_curr and sheet_curr:
             try:
-                # --- ▼▼▼ 修正: キーワードを渡す ▼▼▼ ---
-                df_cols = find_header_and_read_excel(file_curr, sheet_curr, keywords=header_keywords)
+                df_cols = find_header_and_read_excel(file_curr, sheet_curr, keywords=keywords_curr)
                 if df_cols is not None:
                     columns_curr = df_cols.columns.tolist()
             except Exception: pass
@@ -129,6 +136,7 @@ def main():
         sheet_retire = st.text_input("退職者データのシート名", "退職者データフォーマット", key="sheet_retire")
         
         st.header("✔️ 追加エラーチェック設定")
+        # (helpテキスト付きのチェックボックスは変更なし)
         check_salary_decrease = st.checkbox("給与減額チェック", value=True, help="在籍者のうち、当期末の給与1が前期末の給与1よりも減少している従業員を検出します。")
         check_salary_increase = st.checkbox("給与増加率チェック", value=True, help="在籍者のうち、当期末の給与1が前期末の給与1に比べて、指定した増加率（x%）以上に増加している従業員を検出します。")
         increase_rate_x = st.text_input("増加率(x)%", value="5")
@@ -137,18 +145,26 @@ def main():
         check_cumulative_salary2 = st.checkbox("累計給与チェック2", value=True, help="在籍者のうち、当期末の累計給与2が「(前期末の累計給与2 + 前期末の給与1 × 月数(y)) × (1 + 許容率(z)%))」の計算結果よりも多い従業員を検出します。累計額が想定を大幅に超えていないかを確認します。")
         allowance_rate_z = st.text_input("許容率(z)%", value="0")
 
+    # --- 退職者ファイルアップローダーの定義を修正 ---
     retire_uploader_disabled = (col_retire_date != NONE_OPTION)
     with col3:
-        file_retire = st.file_uploader("3. 当期退職者データ (任意)", type=['xlsx'], disabled=retire_uploader_disabled, help="サイドバーで「退職日」列を指定した場合、このアップローダーは無効になります。")
+        st.markdown("##### 3. 当期退職者データ (任意)")
+        file_retire = st.file_uploader("アップロード", type=['xlsx'], disabled=retire_uploader_disabled, help="サイドバーで「退職日」列を指定した場合、このアップローダーは無効になります。", key="up_retire", label_visibility="collapsed")
+        st.markdown("###### ヘッダー行 特定キーワード")
+        keyword_retire_1 = st.text_input("キーワード1", "入社", key="kw_r1", disabled=retire_uploader_disabled)
+        keyword_retire_2 = st.text_input("キーワード2", "生年", key="kw_r2", disabled=retire_uploader_disabled)
+    
+    keywords_retire = [k for k in [keyword_retire_1, keyword_retire_2] if k]
+    # --- ▲▲▲ UIの修正ここまで ▲▲▲ ---
 
     if st.button("チェック開始", use_container_width=True, type="primary"):
         if file_prev and file_curr:
             with st.spinner('データチェックを実行中です...'):
                 try:
+                    # (これ以降の処理は、キーワードリストが正しく渡される以外は変更なし)
                     st.info("ステップ1/7: Excelファイルを読み込んでいます...")
-                    # --- ▼▼▼ 修正: キーワードを渡す ▼▼▼ ---
-                    df_prev = find_header_and_read_excel(file_prev, sheet_prev, keywords=header_keywords)
-                    df_curr = find_header_and_read_excel(file_curr, sheet_curr, keywords=header_keywords)
+                    df_prev = find_header_and_read_excel(file_prev, sheet_prev, keywords=keywords_prev)
+                    df_curr = find_header_and_read_excel(file_curr, sheet_curr, keywords=keywords_curr)
                     df_retire = None
                     if df_prev is None or df_curr is None:
                         st.error("必須ファイル（前期末・当期末）の読み込みに失敗しました。")
@@ -165,8 +181,7 @@ def main():
                         else:
                              st.warning(f"「{col_retire_date}」列に有効な日付が見つかりませんでした。")
                     elif file_retire:
-                        # --- ▼▼▼ 修正: キーワードを渡す ▼▼▼ ---
-                        df_retire = find_header_and_read_excel(file_retire, sheet_retire, keywords=header_keywords)
+                        df_retire = find_header_and_read_excel(file_retire, sheet_retire, keywords=keywords_retire)
 
                     st.info("ステップ2/7: マッチングキーを決定しています...")
                     use_emp_id_key = (col_emp_id != NONE_OPTION and col_emp_id in df_prev.columns and col_emp_id in df_curr.columns)
@@ -187,8 +202,7 @@ def main():
                              df[key_col_name] = df[col_emp_id].astype(str)
                     key_type = "従業員番号" if use_emp_id_key else "入社年月日 + 生年月日"
                     st.success(f"マッチングキーとして '{key_type}' を使用します。")
-                    
-                    # (これ以降のロジックは変更なし)
+
                     results = {}
                     st.info("ステップ3/7: 基本エラーチェック...")
                     for name, df in dataframes.items():
@@ -204,7 +218,7 @@ def main():
                                 age = (valid_dates[col_hire_date] - valid_dates[col_birth_date]).dt.days / 365.25
                                 invalid_age = valid_dates[(age < 15) | (age >= 90)]
                                 results[f'日付妥当性エラー_{name}'] = df.loc[invalid_age.index]
-                    
+
                     st.info("ステップ4/7: 在籍者・退職者・入社者の照合...")
                     merged_st = pd.merge(df_prev, df_curr, on=key_col_name, how='outer', suffixes=('_前期', '_当期'), indicator=True)
                     retiree_candidates = merged_st[merged_st['_merge'] == 'left_only'].copy()
@@ -223,7 +237,7 @@ def main():
                     else:
                         results['退職者候補'] = retiree_candidates
                     results['在籍者'] = continuing_employees
-                    
+
                     st.info("ステップ5/7: 追加エラーチェック...")
                     if col_salary1 != NONE_OPTION and col_salary2 != NONE_OPTION:
                         required_salary_cols = {f'{col_salary1}_前期', f'{col_salary1}_当期', f'{col_salary2}_前期', f'{col_salary2}_当期'}
@@ -273,7 +287,11 @@ def main():
                         summary_list.append(('--- アップロードファイル ---', '')); summary_list.append(('前期末従業員データ', file_prev.name)); summary_list.append(('当期末従業員データ', file_curr.name))
                         if file_retire: summary_list.append(('当期退職者データ', file_retire.name))
                         summary_list.append(('', ''))
-                        summary_list.append(('--- ファイル設定 ---', '')); summary_list.append(('ヘッダー行キーワード1', keyword1)); summary_list.append(('ヘッダー行キーワード2', keyword2)); summary_list.append(('前期末データのシート名', sheet_prev)); summary_list.append(('当期末データのシート名', sheet_curr)); summary_list.append(('退職者データのシート名', sheet_retire)); summary_list.append(('', ''))
+                        summary_list.append(('--- ファイル設定 ---', ''))
+                        summary_list.append(('前期末ヘッダーキーワード1', keyword_prev_1)); summary_list.append(('前期末ヘッダーキーワード2', keyword_prev_2))
+                        summary_list.append(('当期末ヘッダーキーワード1', keyword_curr_1)); summary_list.append(('当期末ヘッダーキーワード2', keyword_curr_2))
+                        summary_list.append(('退職者ヘッダーキーワード1', keyword_retire_1)); summary_list.append(('退職者ヘッダーキーワード2', keyword_retire_2))
+                        summary_list.append(('前期末データのシート名', sheet_prev)); summary_list.append(('当期末データのシート名', sheet_curr)); summary_list.append(('退職者データのシート名', sheet_retire)); summary_list.append(('', ''))
                         summary_list.append(('--- 列名設定 ---', '')); summary_list.append(('従業員番号の列名', col_emp_id)); summary_list.append(('入社年月日の列名', col_hire_date)); summary_list.append(('生年月日の列名', col_birth_date)); summary_list.append(('給与1の列名', col_salary1)); summary_list.append(('給与2の列名', col_salary2)); summary_list.append(('退職日の列名', col_retire_date)); summary_list.append(('', ''))
                         summary_list.append(('--- 追加エラーチェック設定 ---', '')); summary_list.append(('給与減額チェック', '有効' if check_salary_decrease else '無効')); summary_list.append(('給与増加率チェック', '有効' if check_salary_increase else '無効'))
                         if check_salary_increase: summary_list.append(('└ 増加率(x)%', increase_rate_x))
@@ -333,7 +351,7 @@ def main():
                 else:
                     cols[col_idx].metric(label, f"{value} 件")
                 col_idx = (col_idx + 1) % 3
-            st.download_button(label="📥 チェック結果（Excelファイル）をダウンロード", data=processed_data, file_name="check_result.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+            st.download_button(label="📥 チェック結果（Excelファイル）をダウンロード", data=processed_data, file_name="check_result.xlsx", mime="application/vnd.openxmlformats-officedocument-spreadsheetml-sheet", use_container_width=True)
         else:
             st.warning("必須項目である「前期末従業員データ」と「当期末従業員データ」をアップロードしてください。")
 
