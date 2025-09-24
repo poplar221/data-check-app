@@ -4,6 +4,7 @@ import io
 from datetime import datetime
 import os
 from zoneinfo import ZoneInfo
+import numpy as np
 
 def find_header_and_read_excel(uploaded_file, sheet_name, keywords):
     """
@@ -126,7 +127,7 @@ def main():
             col_birth_date_curr = create_column_selector("生年月日", "生年月日", columns_curr, "birth_date_curr")
             col_salary1_curr = create_column_selector("給与1", "給与1", columns_curr, "salary1_curr")
             col_salary2_curr = create_column_selector("給与2", "給与2", columns_curr, "salary2_curr")
-            col_retire_date_curr = create_column_selector("退職日", "退職日", columns_curr, "retire_date_curr")
+            col_retire_date_curr = create_column_selector("退職日", "退職年月日", columns_curr, "retire_date_curr")
         
         retire_file_is_used = (col_retire_date_curr == NONE_OPTION)
         
@@ -145,7 +146,7 @@ def main():
             else:
                 sheet_retire = st.text_input("シート名を入力", "退職者データフォーマット", key="sheet_retire", label_visibility="collapsed", disabled=not retire_file_is_used)
             st.markdown("###### ヘッダー行 特定キーワード")
-            keyword_retire_1 = st.text_input("キーワード1", "入社", key="kw_r1", disabled=not retire_file_is_used)
+            keyword_retire_1 = st.text_input("キーワード1", "退職", key="kw_r1", disabled=not retire_file_is_used)
             keyword_retire_2 = st.text_input("キーワード2", "生年", key="kw_r2", disabled=not retire_file_is_used)
         keywords_retire = [k for k in [keyword_retire_1, keyword_retire_2] if k]
 
@@ -160,7 +161,7 @@ def main():
                 col_emp_id_retire = create_column_selector("従業員番号", "従業員番号", columns_retire, "emp_id_retire")
                 col_hire_date_retire = create_column_selector("入社年月日", "入社年月日", columns_retire, "hire_date_retire")
                 col_birth_date_retire = create_column_selector("生年月日", "生年月日", columns_retire, "birth_date_retire")
-                col_retire_date_retire = create_column_selector("退職日", "退職日", columns_retire, "retire_date_retire")
+                col_retire_date_retire = create_column_selector("退職日", "退職年月日", columns_retire, "retire_date_retire")
             else:
                 st.warning("「当期末データ」の「退職日」列が指定されているため、退職者ファイルは使用されません。")
     
@@ -193,9 +194,7 @@ def main():
                     df_curr = find_header_and_read_excel(file_curr, sheet_curr, keywords=keywords_curr)
                     df_retire = None
                     if df_prev is None or df_curr is None:
-                        st.error("🚫 **処理停止: 必須ファイルが読み込めませんでした。**", icon="🚨")
-                        st.warning("メイン画面で設定した「シート名」や「ヘッダー行 特定キーワード」がExcelファイルの内容と一致しているか確認してください。")
-                        st.stop()
+                        st.error("🚫 **処理停止: 必須ファイルが読み込めませんでした。**", icon="🚨"); st.warning("メイン画面で設定した「シート名」や「ヘッダー行 特定キーワード」がExcelファイルの内容と一致しているか確認してください。"); st.stop()
                     
                     df_prev = rename_df_columns(df_prev, selections_prev)
                     df_curr = rename_df_columns(df_curr, selections_curr)
@@ -229,9 +228,7 @@ def main():
                     for name, df in dataframes.items():
                         if not use_emp_id_key:
                              if not {INTERNAL_COLS["hire_date"], INTERNAL_COLS["birth_date"]}.issubset(df.columns):
-                                st.error(f"🚫 **処理停止: 代替キーに必要な列が見つかりませんでした。**", icon="🚨")
-                                st.warning(f"「{name}」データで、代替キーとして使用する「入社年月日」または「生年月日」の列マッピングが正しく行われているか確認してください。")
-                                st.stop()
+                                st.error(f"🚫 **処理停止: 代替キーに必要な列が見つかりませんでした。**", icon="🚨"); st.warning(f"「{name}」データで、代替キーとして使用する「入社年月日」または「生年月日」の列マッピングが正しく行われているか確認してください。"); st.stop()
                              df[key_col_name] = df[INTERNAL_COLS["hire_date"]].dt.strftime('%Y%m%d').fillna('NODATE') + '_' + df[INTERNAL_COLS["birth_date"]].dt.strftime('%Y%m%d').fillna('NODATE')
                         else:
                              df[key_col_name] = df[INTERNAL_COLS["emp_id"]].astype(str)
@@ -241,16 +238,14 @@ def main():
                     results = {}
                     st.info("ステップ3/7: 基本エラーチェック...")
                     for name, df in dataframes.items():
-                        duplicates = df[df[key_col_name].duplicated(keep=False)]
-                        results[f'キー重複_{name}'] = duplicates.sort_values(by=key_col_name)
+                        duplicates = df[df[key_col_name].duplicated(keep=False)]; results[f'キー重複_{name}'] = duplicates.sort_values(by=key_col_name)
                     for name, df in {'前期末': df_prev, '当期末': df_curr}.items():
                         if {INTERNAL_COLS["hire_date"], INTERNAL_COLS["birth_date"]}.issubset(df.columns):
                             df_copy = df.copy()
                             valid_dates = df_copy.dropna(subset=[INTERNAL_COLS["hire_date"], INTERNAL_COLS["birth_date"]])
                             if not valid_dates.empty:
                                 age = (valid_dates[INTERNAL_COLS["hire_date"]] - valid_dates[INTERNAL_COLS["birth_date"]]).dt.days / 365.25
-                                invalid_age = valid_dates[(age < 15) | (age >= 90)]
-                                results[f'日付妥当性エラー_{name}'] = df.loc[invalid_age.index]
+                                invalid_age = valid_dates[(age < 15) | (age >= 90)]; results[f'日付妥当性エラー_{name}'] = df.loc[invalid_age.index]
                     
                     st.info("ステップ4/7: 在籍者・退職者・入社者の照合...")
                     merged_st = pd.merge(df_prev, df_curr, on=key_col_name, how='outer', suffixes=('_前期', '_当期'), indicator=True)
@@ -261,12 +256,9 @@ def main():
                     if df_retire is not None:
                         st.info("ステップ4.5/7: 退職者データの照合...")
                         merged_retire = pd.merge(retiree_candidates[[key_col_name]], df_retire, on=key_col_name, how='outer', indicator='retire_merge')
-                        retire_unmatched = retiree_candidates[retiree_candidates[key_col_name].isin(merged_retire[merged_retire['retire_merge'] == 'left_only'][key_col_name])]
-                        retire_extra = df_retire[df_retire[key_col_name].isin(merged_retire[merged_retire['retire_merge'] == 'right_only'][key_col_name])]
-                        retire_matched = df_retire[df_retire[key_col_name].isin(merged_retire[merged_retire['retire_merge'] == 'both'][key_col_name])]
-                        results['退職者候補（退職者データ不突合）'] = retire_unmatched
-                        results['退職者データ過剰（前期末データ不突合）'] = retire_extra
-                        results['マッチした退職者'] = retire_matched
+                        results['退職者候補（退職者データ不突合）'] = retiree_candidates[retiree_candidates[key_col_name].isin(merged_retire[merged_retire['retire_merge'] == 'left_only'][key_col_name])]
+                        results['退職者データ過剰（前期末データ不突合）'] = df_retire[df_retire[key_col_name].isin(merged_retire[merged_retire['retire_merge'] == 'right_only'][key_col_name])]
+                        results['マッチした退職者'] = df_retire[df_retire[key_col_name].isin(merged_retire[merged_retire['retire_merge'] == 'both'][key_col_name])]
                     else:
                         results['退職者候補'] = retiree_candidates
                     results['在籍者'] = continuing_employees
@@ -316,22 +308,24 @@ def main():
                         summary_list = []
                         app_title = "退職給付債務計算のための従業員データチェッカー"
                         work_time = datetime.now(tz=ZoneInfo("Asia/Tokyo")).strftime('%Y年%m月%d日 %H:%M:%S JST')
-                        summary_list.append(('アプリタイトル', app_title)); summary_list.append(('アプリ最終更新日時', last_updated)); summary_list.append(('作業日時', work_time)); summary_list.append(('', ''))
-                        summary_list.append(('--- アップロードファイル ---', '')); summary_list.append(('前期末従業員データ', file_prev.name)); summary_list.append(('当期末従業員データ', file_curr.name))
-                        if file_retire: summary_list.append(('当期退職者データ', file_retire.name))
+                        summary_list.extend([('アプリタイトル', app_title), ('アプリ最終更新日時', last_updated), ('作業日時', work_time), ('', '')])
+                        summary_list.extend([('--- アップロードファイル ---', ''), ('前期末従業員データ', file_prev.name), ('当期末従業員データ', file_curr.name)])
+                        if file_retire and retire_file_is_used: summary_list.append(('当期退職者データ', file_retire.name))
                         summary_list.append(('', ''))
                         summary_list.append(('--- ファイル設定 ---', ''))
-                        summary_list.append(('前期末ヘッダーキーワード1', keyword_prev_1)); summary_list.append(('前期末ヘッダーキーワード2', keyword_prev_2))
-                        summary_list.append(('当期末ヘッダーキーワード1', keyword_curr_1)); summary_list.append(('当期末ヘッダーキーワード2', keyword_curr_2))
-                        summary_list.append(('退職者ヘッダーキーワード1', keyword_retire_1)); summary_list.append(('退職者ヘッダーキーワード2', keyword_retire_2))
-                        summary_list.append(('前期末データのシート名', sheet_prev)); summary_list.append(('当期末データのシート名', sheet_curr)); summary_list.append(('退職者データのシート名', sheet_retire)); summary_list.append(('', ''))
-                        
-                        summary_list.append(('--- 列名設定：前期末 ---', '')); summary_list.append(('従業員番号', col_emp_id_prev)); summary_list.append(('入社年月日', col_hire_date_prev)); summary_list.append(('生年月日', col_birth_date_prev)); summary_list.append(('給与1', col_salary1_prev)); summary_list.append(('給与2', col_salary2_prev))
-                        summary_list.append(('--- 列名設定：当期末 ---', '')); summary_list.append(('従業員番号', col_emp_id_curr)); summary_list.append(('入社年月日', col_hire_date_curr)); summary_list.append(('生年月日', col_birth_date_curr)); summary_list.append(('給与1', col_salary1_curr)); summary_list.append(('給与2', col_salary2_curr)); summary_list.append(('退職日', col_retire_date_curr))
+                        summary_list.extend([('前期末ヘッダーキーワード1', keyword_prev_1), ('前期末ヘッダーキーワード2', keyword_prev_2)])
+                        summary_list.extend([('当期末ヘッダーキーワード1', keyword_curr_1), ('当期末ヘッダーキーワード2', keyword_curr_2)])
                         if retire_file_is_used:
-                            summary_list.append(('--- 列名設定：退職者 ---', '')); summary_list.append(('従業員番号', col_emp_id_retire)); summary_list.append(('入社年月日', col_hire_date_retire)); summary_list.append(('生年月日', col_birth_date_retire)); summary_list.append(('退職日', col_retire_date_retire))
+                            summary_list.extend([('退職者ヘッダーキーワード1', keyword_retire_1), ('退職者ヘッダーキーワード2', keyword_retire_2)])
+                        summary_list.extend([('前期末データのシート名', sheet_prev), ('当期末データのシート名', sheet_curr)])
+                        if retire_file_is_used:
+                            summary_list.append(('退職者データのシート名', sheet_retire))
                         summary_list.append(('', ''))
-
+                        summary_list.append(('--- 列名設定：前期末 ---', '')); summary_list.extend([('従業員番号', col_emp_id_prev), ('入社年月日', col_hire_date_prev), ('生年月日', col_birth_date_prev), ('給与1', col_salary1_prev), ('給与2', col_salary2_prev)])
+                        summary_list.append(('--- 列名設定：当期末 ---', '')); summary_list.extend([('従業員番号', col_emp_id_curr), ('入社年月日', col_hire_date_curr), ('生年月日', col_birth_date_curr), ('給与1', col_salary1_curr), ('給与2', col_salary2_curr), ('退職日', col_retire_date_curr)])
+                        if retire_file_is_used:
+                            summary_list.append(('--- 列名設定：退職者 ---', '')); summary_list.extend([('従業員番号', col_emp_id_retire), ('入社年月日', col_hire_date_retire), ('生年月日', col_birth_date_retire), ('退職日', col_retire_date_retire)])
+                        summary_list.append(('', ''))
                         summary_list.append(('--- 追加エラーチェック設定 ---', '')); summary_list.append(('給与減額チェック', '有効' if check_salary_decrease else '無効')); summary_list.append(('給与増加率チェック', '有効' if check_salary_increase else '無効'))
                         if check_salary_increase: summary_list.append(('└ 増加率(x)%', increase_rate_x))
                         summary_list.append(('累計給与チェック1', '有効' if check_cumulative_salary else '無効'))
@@ -359,16 +353,25 @@ def main():
                         summary_worksheet = writer.sheets['サマリー']
                         summary_worksheet.set_column('A:A', 35)
                         summary_worksheet.set_column('B:B', 30)
+                        
                         for sheet_name, df_result in results.items():
                             if not df_result.empty:
                                 df_to_write = df_result.copy()
-                                cols_to_drop = [c for c in ['_merge', 'retire_merge', key_col_name] + list(INTERNAL_COLS.values()) if c in df_to_write.columns]
-                                df_to_write.drop(columns=cols_to_drop, inplace=True)
+                                
+                                retiree_sheets = ['マッチした退職者', '退職者データ過剰（前期末データ不突合）']
+                                cols_to_drop = [c for c in ['_merge', 'retire_merge', key_col_name] if c in df_to_write.columns]
+                                if sheet_name not in retiree_sheets:
+                                    internal_cols_to_drop = [c for c in INTERNAL_COLS.values() if c in df_to_write.columns]
+                                    cols_to_drop.extend(internal_cols_to_drop)
+                                
+                                if cols_to_drop:
+                                    df_to_write.drop(columns=cols_to_drop, inplace=True)
+                                
                                 df_to_write.to_excel(writer, sheet_name=sheet_name, index=False)
                                 worksheet = writer.sheets[sheet_name]
                                 date_col_width = 12
-                                for idx, col_name in enumerate(df_to_write.columns):
-                                    if selections_prev["hire_date"] in col_name or selections_prev["birth_date"] in col_name or (selections_curr["retire_date"] != NONE_OPTION and selections_curr["retire_date"] in col_name):
+                                for idx, col in enumerate(df_to_write.columns):
+                                    if pd.api.types.is_datetime64_any_dtype(df_to_write[col]):
                                         worksheet.set_column(idx, idx, date_col_width)
                     processed_data = output.getvalue()
                     st.info("ステップ7/7: 処理が完了しました。")
