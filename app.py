@@ -53,7 +53,6 @@ def main():
     st.subheader("📁 ファイルのアップロードとヘッダーキーワードの設定")
     col1, col2, col3 = st.columns(3)
     
-    # --- ▼▼▼ ここから修正 ▼▼▼ ---
     with col1:
         st.markdown("##### 1. 前期末従業員データ (必須)")
         file_prev = st.file_uploader("アップロード", type=['xlsx'], key="up_prev", label_visibility="collapsed")
@@ -68,16 +67,11 @@ def main():
         keyword_curr_1 = st.text_input("キーワード1", "入社", key="kw_c1")
         keyword_curr_2 = st.text_input("キーワード2", "生年", key="kw_c2")
 
-    # 各ファイル用のキーワードリストを作成
-    keywords_prev = [k for k in [keyword_prev_1, keyword_prev_2] if k]
-    keywords_curr = [k for k in [keyword_curr_1, keyword_curr_2] if k]
-    
-    # --- サイドバーで設定 ---
+    # --- サイドバーの設定（ファイル設定と追加エラーチェックのみ） ---
     with st.sidebar:
         st.header("⚙️ データ指定設定")
         st.subheader("ファイル設定")
-
-        # サイドバーからはキーワード設定を削除
+        
         st.markdown("##### シート名設定")
         if file_prev:
             try:
@@ -100,8 +94,24 @@ def main():
                 sheet_curr = st.text_input("当期末データのシート名", "従業員データフォーマット", key="sheet_curr")
         else:
             sheet_curr = st.text_input("当期末データのシート名", "従業員データフォーマット", key="sheet_curr")
+        
+        sheet_retire = st.text_input("退職者データのシート名", "退職者データフォーマット", key="sheet_retire")
+        
+        st.header("✔️ 追加エラーチェック設定")
+        check_salary_decrease = st.checkbox("給与減額チェック", value=True, help="在籍者のうち、当期末の給与1が前期末の給与1よりも減少している従業員を検出します。")
+        check_salary_increase = st.checkbox("給与増加率チェック", value=True, help="在籍者のうち、当期末の給与1が前期末の給与1に比べて、指定した増加率（x%）以上に増加している従業員を検出します。")
+        increase_rate_x = st.text_input("増加率(x)%", value="5")
+        check_cumulative_salary = st.checkbox("累計給与チェック1", value=True, help="在籍者のうち、当期末の累計給与2が「前期末の累計給与2 + 前期末の給与1 × 月数(y)」の計算結果よりも少ない従業員を検出します。給与の累計が期待通りに行われているかを確認します。")
+        months_y = st.selectbox("月数(y)", ("1", "12"), index=0)
+        check_cumulative_salary2 = st.checkbox("累計給与チェック2", value=True, help="在籍者のうち、当期末の累計給与2が「(前期末の累計給与2 + 前期末の給与1 × 月数(y)) × (1 + 許容率(z)%))」の計算結果よりも多い従業員を検出します。累計額が想定を大幅に超えていないかを確認します。")
+        allowance_rate_z = st.text_input("許容率(z)%", value="0")
 
-        st.subheader("列名設定")
+    # --- ▼▼▼ ここから修正 ▼▼▼ ---
+    # --- メイン画面に列名設定を移動 ---
+    keywords_prev = [k for k in [keyword_prev_1, keyword_prev_2] if k]
+    keywords_curr = [k for k in [keyword_curr_1, keyword_curr_2] if k]
+
+    with st.expander("列名設定を展開/折りたたみ", expanded=True):
         NONE_OPTION = "(選択しない)"
         columns_prev, columns_curr = [], []
         if file_prev and sheet_prev:
@@ -126,30 +136,24 @@ def main():
                 return st.text_input(label, default_name, key=key)
 
         st.info("ファイルをアップロードしシートを選択すると、列名をドロップダウンで選択できます。")
-        col_emp_id = create_column_selector("従業員番号の列", "従業員番号", columns_prev, "emp_id")
-        col_hire_date = create_column_selector("入社年月日の列", "入社年月日", columns_prev, "hire_date")
-        col_birth_date = create_column_selector("生年月日の列", "生年月日", columns_prev, "birth_date")
-        col_salary1 = create_column_selector("給与1の列", "給与1", columns_prev, "salary1")
-        col_salary2 = create_column_selector("給与2の列", "給与2", columns_prev, "salary2")
-        col_retire_date = create_column_selector("退職日の列（当期末データ内）", "退職日", columns_curr, "retire_date")
         
-        sheet_retire = st.text_input("退職者データのシート名", "退職者データフォーマット", key="sheet_retire")
-        
-        st.header("✔️ 追加エラーチェック設定")
-        # (helpテキスト付きのチェックボックスは変更なし)
-        check_salary_decrease = st.checkbox("給与減額チェック", value=True, help="在籍者のうち、当期末の給与1が前期末の給与1よりも減少している従業員を検出します。")
-        check_salary_increase = st.checkbox("給与増加率チェック", value=True, help="在籍者のうち、当期末の給与1が前期末の給与1に比べて、指定した増加率（x%）以上に増加している従業員を検出します。")
-        increase_rate_x = st.text_input("増加率(x)%", value="5")
-        check_cumulative_salary = st.checkbox("累計給与チェック1", value=True, help="在籍者のうち、当期末の累計給与2が「前期末の累計給与2 + 前期末の給与1 × 月数(y)」の計算結果よりも少ない従業員を検出します。給与の累計が期待通りに行われているかを確認します。")
-        months_y = st.selectbox("月数(y)", ("1", "12"), index=0)
-        check_cumulative_salary2 = st.checkbox("累計給与チェック2", value=True, help="在籍者のうち、当期末の累計給与2が「(前期末の累計給与2 + 前期末の給与1 × 月数(y)) × (1 + 許容率(z)%))」の計算結果よりも多い従業員を検出します。累計額が想定を大幅に超えていないかを確認します。")
-        allowance_rate_z = st.text_input("許容率(z)%", value="0")
+        # 3列で列名設定を表示
+        col_set1, col_set2, col_set3 = st.columns(3)
+        with col_set1:
+            col_emp_id = create_column_selector("従業員番号の列", "従業員番号", columns_prev, "emp_id")
+            col_hire_date = create_column_selector("入社年月日の列", "入社年月日", columns_prev, "hire_date")
+        with col_set2:
+            col_birth_date = create_column_selector("生年月日の列", "生年月日", columns_prev, "birth_date")
+            col_retire_date = create_column_selector("退職日の列（当期末データ内）", "退職日", columns_curr, "retire_date")
+        with col_set3:
+            col_salary1 = create_column_selector("給与1の列", "給与1", columns_prev, "salary1")
+            col_salary2 = create_column_selector("給与2の列", "給与2", columns_prev, "salary2")
 
-    # --- 退職者ファイルアップローダーの定義を修正 ---
+    # 退職者ファイルアップローダーとキーワード設定
     retire_uploader_disabled = (col_retire_date != NONE_OPTION)
     with col3:
         st.markdown("##### 3. 当期退職者データ (任意)")
-        file_retire = st.file_uploader("アップロード", type=['xlsx'], disabled=retire_uploader_disabled, help="サイドバーで「退職日」列を指定した場合、このアップローダーは無効になります。", key="up_retire", label_visibility="collapsed")
+        file_retire = st.file_uploader("アップロード", type=['xlsx'], disabled=retire_uploader_disabled, help="メイン画面の「列名設定」で「退職日」列を指定した場合、このアップローダーは無効になります。", key="up_retire", label_visibility="collapsed")
         st.markdown("###### ヘッダー行 特定キーワード")
         keyword_retire_1 = st.text_input("キーワード1", "入社", key="kw_r1", disabled=retire_uploader_disabled)
         keyword_retire_2 = st.text_input("キーワード2", "生年", key="kw_r2", disabled=retire_uploader_disabled)
@@ -202,7 +206,8 @@ def main():
                              df[key_col_name] = df[col_emp_id].astype(str)
                     key_type = "従業員番号" if use_emp_id_key else "入社年月日 + 生年月日"
                     st.success(f"マッチングキーとして '{key_type}' を使用します。")
-
+                    
+                    # (これ以降のロジックは変更なし)
                     results = {}
                     st.info("ステップ3/7: 基本エラーチェック...")
                     for name, df in dataframes.items():
@@ -218,7 +223,7 @@ def main():
                                 age = (valid_dates[col_hire_date] - valid_dates[col_birth_date]).dt.days / 365.25
                                 invalid_age = valid_dates[(age < 15) | (age >= 90)]
                                 results[f'日付妥当性エラー_{name}'] = df.loc[invalid_age.index]
-
+                    
                     st.info("ステップ4/7: 在籍者・退職者・入社者の照合...")
                     merged_st = pd.merge(df_prev, df_curr, on=key_col_name, how='outer', suffixes=('_前期', '_当期'), indicator=True)
                     retiree_candidates = merged_st[merged_st['_merge'] == 'left_only'].copy()
@@ -237,7 +242,7 @@ def main():
                     else:
                         results['退職者候補'] = retiree_candidates
                     results['在籍者'] = continuing_employees
-
+                    
                     st.info("ステップ5/7: 追加エラーチェック...")
                     if col_salary1 != NONE_OPTION and col_salary2 != NONE_OPTION:
                         required_salary_cols = {f'{col_salary1}_前期', f'{col_salary1}_当期', f'{col_salary2}_前期', f'{col_salary2}_当期'}
@@ -351,7 +356,7 @@ def main():
                 else:
                     cols[col_idx].metric(label, f"{value} 件")
                 col_idx = (col_idx + 1) % 3
-            st.download_button(label="📥 チェック結果（Excelファイル）をダウンロード", data=processed_data, file_name="check_result.xlsx", mime="application/vnd.openxmlformats-officedocument-spreadsheetml-sheet", use_container_width=True)
+            st.download_button(label="📥 チェック結果（Excelファイル）をダウンロード", data=processed_data, file_name="check_result.xlsx", mime="application/vnd.openxmlformats-officedocument-spreadsheetml.sheet", use_container_width=True)
         else:
             st.warning("必須項目である「前期末従業員データ」と「当期末従業員データ」をアップロードしてください。")
 
