@@ -8,13 +8,24 @@ import numpy as np
 
 def find_header_and_read_excel(uploaded_file, sheet_name, keywords):
     """
-    Excelファイルからキーワードを含む行をヘッダーとして特定し、データを読み込む関数。
+    アップロードされたExcelファイルを読み込み、指定されたキーワードが含まれる行をヘッダーとして特定する。
+
+    Args:
+        uploaded_file (UploadedFile): Streamlitのfile_uploaderでアップロードされたファイルオブジェクト。
+        sheet_name (str): 読み込む対象のシート名。
+        keywords (list): ヘッダー行に含まれるべき文字列のリスト。
+
+    Returns:
+        pandas.DataFrame: ヘッダーを正しく設定して読み込んだデータフレーム。失敗した場合はNoneを返す。
     """
+    # ファイルオブジェクトを複数回読むために、読み取り位置を先頭に戻す
     if uploaded_file:
         uploaded_file.seek(0)
     try:
+        # まずヘッダーなしで全体を読み込む
         df_no_header = pd.read_excel(uploaded_file, sheet_name=sheet_name, header=None)
         header_row_index = -1
+        # 1行ずつスキャンしてキーワードが含まれる行を探す
         for i, row in df_no_header.iterrows():
             row_str = ''.join(map(str, row.dropna().values))
             if all(keyword in row_str for keyword in keywords):
@@ -25,6 +36,7 @@ def find_header_and_read_excel(uploaded_file, sheet_name, keywords):
             st.error(f"ファイル '{uploaded_file.name}' のシート '{sheet_name}' でヘッダー行(キーワード: {keywords})が見つかりませんでした。")
             return None
         
+        # 見つけたヘッダー行を元に、再度ファイルを正しく読み込む
         uploaded_file.seek(0)
         df = pd.read_excel(uploaded_file, sheet_name=sheet_name, header=header_row_index)
         return df
@@ -37,22 +49,28 @@ def main():
     """
     アプリケーションのメイン関数
     """
+    # --- ページ全体の基本設定 ---
     st.set_page_config(layout="wide")
 
+    # --- アプリケーションのタイトルと最終更新日時 ---
     st.title("退職給付債務計算のための従業員データチェッカー")
     try:
+        # 実行ファイルの最終更新日時を取得し、JSTで表示
         mod_time = os.path.getmtime(__file__)
         jst_time = datetime.fromtimestamp(mod_time, tz=ZoneInfo("Asia/Tokyo"))
         last_updated = jst_time.strftime('%Y年%m月%d日 %H:%M:%S JST')
         st.caption(f"最終更新日時: {last_updated}")
     except Exception:
+        # ローカル環境などでパスが取得できない場合のエラーを無視
         pass
     
     st.write("前期末、当期末、退職者の従業員データ（Excelファイル）をアップロードして、データの整合性チェックを行います。")
 
+    # --- メイン画面のUI定義 ---
     st.subheader("📁 ファイルのアップロードと各種設定")
     col1, col2, col3 = st.columns(3)
     
+    # --- ファイル1: 前期末データ ---
     with col1:
         st.markdown("##### 1. 前期末従業員データ (必須)")
         file_prev = st.file_uploader("アップロード", type=['xlsx'], key="up_prev", label_visibility="collapsed")
@@ -71,6 +89,7 @@ def main():
         keyword_prev_1 = st.text_input("キーワード1", "入社", key="kw_p1")
         keyword_prev_2 = st.text_input("キーワード2", "生年", key="kw_p2")
 
+    # --- ファイル2: 当期末データ ---
     with col2:
         st.markdown("##### 2. 当期末従業員データ (必須)")
         file_curr = st.file_uploader("アップロード", type=['xlsx'], key="up_curr", label_visibility="collapsed")
@@ -89,13 +108,17 @@ def main():
         keyword_curr_1 = st.text_input("キーワード1", "入社", key="kw_c1")
         keyword_curr_2 = st.text_input("キーワード2", "生年", key="kw_c2")
 
+    # 各ファイル用のキーワードリストを作成（空のキーワードは除外）
     keywords_prev = [k for k in [keyword_prev_1, keyword_prev_2] if k]
     keywords_curr = [k for k in [keyword_curr_1, keyword_curr_2] if k]
     
+    # --- 列名設定（メイン画面の折りたたみセクション内）---
     with st.expander("列名設定を展開/折りたたみ", expanded=True):
         NONE_OPTION = "(選択しない)"
+        # 各ファイルの列名リストを初期化
         columns_prev, columns_curr, columns_retire = [], [], []
 
+        # ファイルとシートが選択されていれば、列名を読み込む
         if file_prev and sheet_prev:
             df_cols = find_header_and_read_excel(file_prev, sheet_prev, keywords=keywords_prev)
             if df_cols is not None: columns_prev = df_cols.columns.tolist()
@@ -103,16 +126,18 @@ def main():
             df_cols = find_header_and_read_excel(file_curr, sheet_curr, keywords=keywords_curr)
             if df_cols is not None: columns_curr = df_cols.columns.tolist()
         
+        # 列名選択のドロップダウン/テキスト入力を生成するヘルパー関数
         def create_column_selector(label, default_name, columns, key):
-            if columns:
+            if columns: # 列名リストがあればドロップダウンを作成
                 options = [NONE_OPTION] + columns
                 index = options.index(default_name) if default_name in options else 0
                 return st.selectbox(label, options=options, index=index, key=key)
-            else:
+            else: # なければテキスト入力
                 return st.text_input(label, default_name, key=key)
 
         st.info("ファイルをアップロードしシートを選択すると、下のドロップダウンに列名が自動で表示されます。")
         map_col1, map_col2, map_col3 = st.columns(3)
+        # --- 列名マッピングUI ---
         with map_col1:
             st.markdown("<h6>① 前期末データ</h6>", unsafe_allow_html=True)
             col_emp_id_prev = create_column_selector("従業員番号", "従業員番号", columns_prev, "emp_id_prev")
@@ -129,8 +154,10 @@ def main():
             col_salary2_curr = create_column_selector("給与2", "給与2", columns_curr, "salary2_curr")
             col_retire_date_curr = create_column_selector("退職日", "退職年月日", columns_curr, "retire_date_curr")
         
+        # 当期末データの「退職日」列が選択されているかどうかが、退職者ファイルの利用可否を決定する
         retire_file_is_used = (col_retire_date_curr == NONE_OPTION)
         
+        # --- ファイル3: 退職者データ ---
         with col3:
             st.markdown("##### 3. 当期退職者データ (任意)")
             file_retire = st.file_uploader("アップロード", type=['xlsx'], disabled=not retire_file_is_used, help="メイン画面の「列名設定」で「退職日」列を指定した場合、このアップローダーは無効になります。", key="up_retire", label_visibility="collapsed")
@@ -150,11 +177,13 @@ def main():
             keyword_retire_2 = st.text_input("キーワード2", "生年", key="kw_r2", disabled=not retire_file_is_used)
         keywords_retire = [k for k in [keyword_retire_1, keyword_retire_2] if k]
 
+        # 退職者ファイルの列名を読み込む（UIの再描画で正しく反映されるように）
         if file_retire and sheet_retire and retire_file_is_used:
             df_cols = find_header_and_read_excel(file_retire, sheet_retire, keywords=keywords_retire)
             if df_cols is not None:
                 columns_retire = df_cols.columns.tolist()
 
+        # 退職者データの列名マッピングUI（再描画）
         with map_col3:
             st.markdown("<h6>③ 退職者データ</h6>", unsafe_allow_html=True)
             if retire_file_is_used:
@@ -165,6 +194,7 @@ def main():
             else:
                 st.warning("「当期末データ」の「退職日」列が指定されているため、退職者ファイルは使用されません。")
     
+    # --- サイドバー（追加エラーチェックのみ） ---
     with st.sidebar:
         st.header("⚙️ 追加エラーチェック設定")
         check_salary_decrease = st.checkbox("給与減額チェック", value=True, help="在籍者のうち、当期末の給与1が前期末の給与1よりも減少している従業員を検出します。")
@@ -175,20 +205,27 @@ def main():
         check_cumulative_salary2 = st.checkbox("累計給与チェック2", value=True, help="在籍者のうち、当期末の累計給与2が「(前期末の累計給与2 + 前期末の給与1 × 月数(y)) × (1 + 許容率(z)%))」の計算結果よりも多い従業員を検出します。累計額が想定を大幅に超えていないかを確認します。")
         allowance_rate_z = st.text_input("許容率(z)%", value="0")
 
+    # --- メイン処理 ---
     if st.button("チェック開始", use_container_width=True, type="primary"):
         if file_prev and file_curr:
             processed_data = None
             with st.spinner('データチェックを実行中です...'):
                 try:
+                    # --- 内部処理用の標準列名を定義 ---
                     INTERNAL_COLS = {"emp_id": "_emp_id", "hire_date": "_hire_date", "birth_date": "_birth_date", "retire_date": "_retire_date", "salary1": "_salary1", "salary2": "_salary2"}
+                    
+                    # --- ユーザーが選択した列名のマッピングを定義 ---
                     selections_prev = { "emp_id": col_emp_id_prev, "hire_date": col_hire_date_prev, "birth_date": col_birth_date_prev, "salary1": col_salary1_prev, "salary2": col_salary2_prev }
                     selections_curr = { "emp_id": col_emp_id_curr, "hire_date": col_hire_date_curr, "birth_date": col_birth_date_curr, "salary1": col_salary1_curr, "salary2": col_salary2_curr, "retire_date": col_retire_date_curr }
                     if retire_file_is_used:
                          selections_retire = { "emp_id": col_emp_id_retire, "hire_date": col_hire_date_retire, "birth_date": col_birth_date_retire, "retire_date": col_retire_date_retire }
+                    
+                    # --- データフレームの列名を内部標準名にリネームするヘルパー関数 ---
                     def rename_df_columns(df, selections):
                         rename_map = {v: INTERNAL_COLS[k] for k, v in selections.items() if v != NONE_OPTION and v in df.columns}
                         return df.rename(columns=rename_map)
 
+                    # --- ステップ1: ファイル読み込みと列名標準化 ---
                     st.info("ステップ1/7: Excelファイルを読み込み、列名を標準化しています...")
                     df_prev = find_header_and_read_excel(file_prev, sheet_prev, keywords=keywords_prev)
                     df_curr = find_header_and_read_excel(file_curr, sheet_curr, keywords=keywords_curr)
@@ -199,6 +236,7 @@ def main():
                     df_prev = rename_df_columns(df_prev, selections_prev)
                     df_curr = rename_df_columns(df_curr, selections_curr)
 
+                    # --- ステップ1.5: 退職者の特定 ---
                     if col_retire_date_curr != NONE_OPTION and INTERNAL_COLS["retire_date"] in df_curr.columns:
                         st.info(f"ステップ1.5/7: 当期末データから退職者を抽出...")
                         retiree_mask = df_curr[INTERNAL_COLS["retire_date"]].notna()
@@ -209,6 +247,7 @@ def main():
                         df_retire = find_header_and_read_excel(file_retire, sheet_retire, keywords=keywords_retire)
                         if df_retire is not None: df_retire = rename_df_columns(df_retire, selections_retire)
 
+                    # --- ステップ1.8: 日付列の型変換 ---
                     st.info("ステップ1.8/7: 日付列を日付形式に変換しています...")
                     date_cols_to_convert = [INTERNAL_COLS["hire_date"], INTERNAL_COLS["birth_date"], INTERNAL_COLS["retire_date"]]
                     for df in [df_prev, df_curr, df_retire]:
@@ -217,6 +256,7 @@ def main():
                                 if col in df.columns:
                                     df[col] = pd.to_datetime(df[col].astype(str), errors='coerce')
 
+                    # --- ステップ2: マッチングキーの決定 ---
                     st.info("ステップ2/7: マッチングキーを決定しています...")
                     use_emp_id_key = (INTERNAL_COLS["emp_id"] in df_prev.columns and INTERNAL_COLS["emp_id"] in df_curr.columns)
                     dataframes = {'前期末': df_prev, '当期末': df_curr}
@@ -235,6 +275,7 @@ def main():
                     key_type = "従業員番号" if use_emp_id_key else "入社年月日 + 生年月日"
                     st.success(f"マッチングキーとして '{key_type}' を使用します。")
                     
+                    # --- ステップ3: 基本エラーチェック ---
                     results = {}
                     st.info("ステップ3/7: 基本エラーチェック...")
                     for name, df in dataframes.items():
@@ -247,6 +288,7 @@ def main():
                                 age = (valid_dates[INTERNAL_COLS["hire_date"]] - valid_dates[INTERNAL_COLS["birth_date"]]).dt.days / 365.25
                                 invalid_age = valid_dates[(age < 15) | (age >= 90)]; results[f'日付妥当性エラー_{name}'] = df.loc[invalid_age.index]
                     
+                    # --- ステップ4: 在籍者・退職者・入社者の照合 ---
                     st.info("ステップ4/7: 在籍者・退職者・入社者の照合...")
                     merged_st = pd.merge(df_prev, df_curr, on=key_col_name, how='outer', suffixes=('_前期', '_当期'), indicator=True)
                     retiree_candidates = merged_st[merged_st['_merge'] == 'left_only'].copy()
@@ -263,6 +305,7 @@ def main():
                         results['退職者候補'] = retiree_candidates
                     results['在籍者'] = continuing_employees
                     
+                    # --- ステップ5: 追加エラーチェック ---
                     st.info("ステップ5/7: 追加エラーチェック...")
                     sal1_int, sal2_int = INTERNAL_COLS["salary1"], INTERNAL_COLS["salary2"]
                     required_salary_cols = {f'{sal1_int}_前期', f'{sal1_int}_当期', f'{sal2_int}_前期', f'{sal2_int}_当期'}
@@ -291,6 +334,7 @@ def main():
                                 results['累計給与エラー2'] = check_df[check_df[f'{sal2_int}_当期'] > upper_limit]
                             except ValueError: st.warning("月数(y)または許容率(z)が無効な数値のためスキップしました。")
                     
+                    # --- ステップ6: サマリー作成とExcel出力 ---
                     summary_info = {"前期末従業員数": len(df_prev), "当期末従業員数": len(df_curr), "在籍者数": len(results.get('在籍者', []))}
                     if df_retire is not None:
                         summary_info["当期退職者数"] = len(df_retire)
@@ -315,11 +359,9 @@ def main():
                         summary_list.append(('--- ファイル設定 ---', ''))
                         summary_list.extend([('前期末ヘッダーキーワード1', keyword_prev_1), ('前期末ヘッダーキーワード2', keyword_prev_2)])
                         summary_list.extend([('当期末ヘッダーキーワード1', keyword_curr_1), ('当期末ヘッダーキーワード2', keyword_curr_2)])
-                        if retire_file_is_used:
-                            summary_list.extend([('退職者ヘッダーキーワード1', keyword_retire_1), ('退職者ヘッダーキーワード2', keyword_retire_2)])
+                        if retire_file_is_used: summary_list.extend([('退職者ヘッダーキーワード1', keyword_retire_1), ('退職者ヘッダーキーワード2', keyword_retire_2)])
                         summary_list.extend([('前期末データのシート名', sheet_prev), ('当期末データのシート名', sheet_curr)])
-                        if retire_file_is_used:
-                            summary_list.append(('退職者データのシート名', sheet_retire))
+                        if retire_file_is_used: summary_list.append(('退職者データのシート名', sheet_retire))
                         summary_list.append(('', ''))
                         summary_list.append(('--- 列名設定：前期末 ---', '')); summary_list.extend([('従業員番号', col_emp_id_prev), ('入社年月日', col_hire_date_prev), ('生年月日', col_birth_date_prev), ('給与1', col_salary1_prev), ('給与2', col_salary2_prev)])
                         summary_list.append(('--- 列名設定：当期末 ---', '')); summary_list.extend([('従業員番号', col_emp_id_curr), ('入社年月日', col_hire_date_curr), ('生年月日', col_birth_date_curr), ('給与1', col_salary1_curr), ('給与2', col_salary2_curr), ('退職日', col_retire_date_curr)])
@@ -357,16 +399,13 @@ def main():
                         for sheet_name, df_result in results.items():
                             if not df_result.empty:
                                 df_to_write = df_result.copy()
-                                
                                 retiree_sheets = ['マッチした退職者', '退職者データ過剰（前期末データ不突合）']
                                 cols_to_drop = [c for c in ['_merge', 'retire_merge', key_col_name] if c in df_to_write.columns]
                                 if sheet_name not in retiree_sheets:
                                     internal_cols_to_drop = [c for c in INTERNAL_COLS.values() if c in df_to_write.columns]
                                     cols_to_drop.extend(internal_cols_to_drop)
-                                
                                 if cols_to_drop:
                                     df_to_write.drop(columns=cols_to_drop, inplace=True)
-                                
                                 df_to_write.to_excel(writer, sheet_name=sheet_name, index=False)
                                 worksheet = writer.sheets[sheet_name]
                                 date_col_width = 12
