@@ -13,7 +13,8 @@ def find_header_and_read_excel(uploaded_file, sheet_name, keywords):
     if uploaded_file:
         uploaded_file.seek(0)
     try:
-        df_no_header = pd.read_excel(uploaded_file, sheet_name=sheet_name, header=None)
+        # .xlsと.xlsxの両方に対応するため、engineを自動選択させる
+        df_no_header = pd.read_excel(uploaded_file, sheet_name=sheet_name, header=None, engine=None)
         header_row_index = -1
         for i, row in df_no_header.iterrows():
             row_str = ''.join(map(str, row.dropna().values))
@@ -26,7 +27,7 @@ def find_header_and_read_excel(uploaded_file, sheet_name, keywords):
             return None
         
         uploaded_file.seek(0)
-        df = pd.read_excel(uploaded_file, sheet_name=sheet_name, header=header_row_index)
+        df = pd.read_excel(uploaded_file, sheet_name=sheet_name, header=header_row_index, engine=None)
         return df
 
     except Exception as e:
@@ -60,7 +61,7 @@ def main():
     
     with col1:
         st.markdown("##### 1. 前期末従業員データ (必須)")
-        file_prev = st.file_uploader("アップロード", type=['xlsx'], key="up_prev", label_visibility="collapsed")
+        file_prev = st.file_uploader("アップロード", type=['xlsx', 'xls'], key="up_prev", label_visibility="collapsed")
         st.markdown("###### シート名")
         if file_prev:
             try:
@@ -78,7 +79,7 @@ def main():
 
     with col2:
         st.markdown("##### 2. 当期末従業員データ (必須)")
-        file_curr = st.file_uploader("アップロード", type=['xlsx'], key="up_curr", label_visibility="collapsed")
+        file_curr = st.file_uploader("アップロード", type=['xlsx', 'xls'], key="up_curr", label_visibility="collapsed")
         st.markdown("###### シート名")
         if file_curr:
             try:
@@ -153,7 +154,7 @@ def main():
         
         with col3:
             st.markdown("##### 3. 当期退職者データ (任意)")
-            file_retire = st.file_uploader("アップロード", type=['xlsx'], disabled=not retire_file_is_used, help="メイン画面の「列名設定」で「退職日」列を指定した場合、このアップローダーは無効になります。", key="up_retire", label_visibility="collapsed")
+            file_retire = st.file_uploader("アップロード", type=['xlsx', 'xls'], disabled=not retire_file_is_used, help="メイン画面の「列名設定」で「退職日」列を指定した場合、このアップローダーは無効になります。", key="up_retire", label_visibility="collapsed")
             st.markdown("###### シート名")
             if file_retire:
                 try:
@@ -386,19 +387,31 @@ def main():
                     else: st.warning(f"「給与3」の列が指定/存在しないため、給与3,4のチェックはスキップされました。")
                     
                     st.info("ステップ6/7: 結果をExcelファイルにまとめています...")
-                    summary_info = {"前期末従業員数": len(df_prev), "当期末従業員数": len(df_curr), "在籍者数": len(results.get('在籍者', []))}
-                    if df_retire is not None: summary_info["当期退職者数"] = len(df_retire)
+                    summary_info = {
+                        "前期従業員データ数": len(df_prev), 
+                        "当期従業員データ数": len(df_curr),
+                        "在籍者数": len(results.get('在籍者', [])),
+                        "マッチした退職者": len(results.get('マッチした退職者', []))
+                        }
+                    if df_retire is not None: 
+                        summary_info["当期退職者データ数"] = len(df_retire)
+                    
                     summary_errors = {
-                        "キー重複": sum(len(df) for name, df in results.items() if 'キー重複' in name), "日付妥当性エラー": sum(len(df) for name, df in results.items() if '日付妥当性' in name), 
-                        "基本情報変更エラー": len(results.get('基本情報変更エラー', [])), "入社者候補": len(results.get('入社者候補', [])), 
+                        "キー重複": sum(len(df) for name, df in results.items() if 'キー重複' in name), 
+                        "日付妥当性エラー": sum(len(df) for name, df in results.items() if '日付妥当性' in name), 
+                        "基本情報変更エラー": len(results.get('基本情報変更エラー', [])), 
+                        "入社者候補": len(results.get('入社者候補', [])), 
                         "給与減額エラー(1)": len(results.get('給与減額エラー(1)', [])), "給与増加率エラー(1)": len(results.get('給与増加率エラー(1)', [])), 
                         "累計給与エラー(1-1)": len(results.get('累計給与エラー(1-1)', [])), "累計給与エラー(1-2)": len(results.get('累計給与エラー(1-2)', [])),
                         "給与減額エラー(3)": len(results.get('給与減額エラー(3)', [])), "給与増加率エラー(3)": len(results.get('給与増加率エラー(3)', [])),
                         "累計給与エラー(3-1)": len(results.get('累計給与エラー(3-1)', [])), "累計給与エラー(3-2)": len(results.get('累計給与エラー(3-2)', []))
                     }
                     if df_retire is not None:
-                        summary_errors["退職者候補（不突合）"] = len(results.get('退職者候補（退職者データ不突合）', [])); summary_errors["退職者データ過剰"] = len(results.get('退職者データ過剰（前期末データ不突合）', []))
-                    else: summary_errors["退職者候補"] = len(results.get('退職者候補', []))
+                        summary_errors["退職者候補（不突合）"] = len(results.get('退職者候補（退職者データ不突合）', []))
+                        summary_errors["退職者データ過剰"] = len(results.get('退職者データ過剰（前期末データ不突合）', []))
+                    else: 
+                        summary_errors["退職者候補"] = len(results.get('退職者候補', []))
+                    
                     st.session_state.summary_metrics = {**summary_info, **summary_errors}
                     
                     output = io.BytesIO()
@@ -410,6 +423,7 @@ def main():
                         summary_list.extend([('--- アップロードファイル ---', ''), ('前期末従業員データ', file_prev.name), ('当期末従業員データ', file_curr.name)])
                         if file_retire and retire_file_is_used: summary_list.append(('当期退職者データ', file_retire.name))
                         summary_list.append(('', ''))
+                        # ... (中略: ファイル設定、列名設定などのサマリーは変更なし) ...
                         summary_list.append(('--- ファイル設定 ---', ''))
                         summary_list.append(('計算基準日', base_date.strftime('%Y/%m/%d')))
                         summary_list.extend([('前期末ヘッダーキーワード1', keyword_prev_1), ('前期末ヘッダーキーワード2', keyword_prev_2)])
@@ -425,7 +439,7 @@ def main():
                         if retire_file_is_used:
                             summary_list.append(('--- 列名設定：退職者 ---', '')); summary_list.extend([('従業員番号', col_emp_id_retire), ('入社年月日', col_hire_date_retire), ('加入年月日', col_enroll_date_retire), ('生年月日', col_birth_date_retire), ('退職日', col_retire_date_retire)])
                         summary_list.append(('', ''))
-                        summary_list.append(('--- 追加エラーチェック設定 (給与1,2) ---', '')); summary_list.extend([('給与減額チェック(1)', '有効' if check_salary_decrease_1 else '無効'), ('給与増加率チェック(1)', '有効' if check_salary_increase_1 else '無効')])
+                        summary_list.append(('--- 追加エラーチェック設定 (給与1,2) ---', '')); summary_list.extend([('給я減額チェック(1)', '有効' if check_salary_decrease_1 else '無効'), ('給与増加率チェック(1)', '有効' if check_salary_increase_1 else '無効')])
                         if check_salary_increase_1: summary_list.append(('└ 増加率(x1)%', increase_rate_x1))
                         summary_list.extend([('累計給与チェック(1-1)', '有効' if check_cumulative_salary_1 else '無効'), ('累計給与チェック(1-2)', '有効' if check_cumulative_salary_2 else '無効')])
                         if check_cumulative_salary_1 or check_cumulative_salary_2: summary_list.extend([('└ 月数(y1)', months_y1), ('└ 許容率(z1)%', allowance_rate_z1)])
@@ -435,23 +449,32 @@ def main():
                         summary_list.extend([('累計給与チェック(3-1)', '有効' if check_cumulative_salary_3 else '無効'), ('累計給与チェック(3-2)', '有効' if check_cumulative_salary_4 else '無効')])
                         if check_cumulative_salary_3 or check_cumulative_salary_4: summary_list.extend([('└ 月数(y3)', months_y3), ('└ 許容率(z3)%', allowance_rate_z3)])
                         summary_list.append(('', ''))
-                        summary_list.append(('--- チェック結果サマリー ---', ''))
-                        info_labels = ["前期末従業員数", "当期末従業員数", "在籍者数", "当期退職者数"]
-                        def format_value(label, value):
-                            unit = "人" if label in info_labels else "件"; return f"{value} {unit}"
-                        summary_list.append(('前期末従業員数', format_value('前期末従業員数', st.session_state.summary_metrics.get('前期末従業員数', 0)))); summary_list.append(('当期末従業員数', format_value('当期末従業員数', st.session_state.summary_metrics.get('当期末従業員数', 0)))); summary_list.append(('在籍者数', format_value('在籍者数', st.session_state.summary_metrics.get('在籍者数', 0)))); summary_list.append(('基本情報変更エラー', format_value('基本情報変更エラー', st.session_state.summary_metrics.get('基本情報変更エラー', 0))))
-                        if df_retire is not None and retire_file_is_used: summary_list.append(('退職者候補（不突合）', format_value('退職者候補（不突合）', st.session_state.summary_metrics.get('退職者候補（不突合）', 0))))
-                        elif df_retire is None: summary_list.append(('退職者候補', format_value('退職者候補', st.session_state.summary_metrics.get('退職者候補', 0))))
-                        summary_list.append(('入社者候補', format_value('入社者候補', st.session_state.summary_metrics.get('入社者候補', 0))))
-                        if df_retire is not None:
-                            summary_list.append(('当期退職者数', format_value('当期退職者数', st.session_state.summary_metrics.get('当期退職者数', 0))))
-                            if retire_file_is_used:
-                                summary_list.append(('退職者データ過剰', format_value('退職者データ過剰', st.session_state.summary_metrics.get('退職者データ過剰（前期末データ不突合）', 0))))
-                        for key in st.session_state.summary_metrics:
-                            if any(s in key for s in ['キー重複', '日付妥当性', '給与']):
-                                summary_list.append((key, format_value(key, st.session_state.summary_metrics.get(key, 0))))
-                        df_summary = pd.DataFrame(summary_list, columns=['項目', '設定・結果'])
                         
+                        # --- Excelサマリーシートの表示項目を修正 ---
+                        summary_list.append(('--- チェック結果サマリー ---', ''))
+                        
+                        # 表示順とラベルを定義
+                        summary_order = [
+                            ('前期従業員データ数', '前期従業員データ数', '人'), ('当期従業員データ数', '当期従業員データ数', '人'),
+                            ('当期退職者データ数', '当期退職者データ数', '人'), ('キー重複', 'キー重複', '件'),
+                            ('基本情報変更エラー', '基本情報変更エラー', '件'), ('日付妥当性エラー', '日付妥当性エラー', '件'),
+                            ('在籍者数（凸合）', '在籍者数', '人'), 
+                            ('退職者候補（不凸合＝前期のみ）', '退職者候補（不突合）' if df_retire is not None else '退職者候補', '人'),
+                            ('入社者候補（不凸合＝当期のみ）', '入社者候補', '人'),
+                            ('退職者データ過剰（不凸合＝前期なし）', '退職者データ過剰', '人'),
+                            ('マッチした退職者（凸合）', 'マッチした退職者', '人'),
+                            ('給与減額エラー(1)', '給与減額エラー(1)', '件'), ('給与増加率エラー(1)', '給与増加率エラー(1)', '件'),
+                            ('累計給与エラー(1-1)', '累計給与エラー(1-1)', '件'), ('累計給与エラー(1-2)', '累計給与エラー(1-2)', '件'),
+                            ('給与減額エラー(3)', '給与減額エラー(3)', '件'), ('給与増加率エラー(3)', '給与増加率エラー(3)', '件'),
+                            ('累計給与エラー(3-1)', '累計給与エラー(3-1)', '件'), ('累計給与エラー(3-2)', '累計給与エラー(3-2)', '件')
+                        ]
+
+                        for label, key, unit in summary_order:
+                            value = st.session_state.summary_metrics.get(key)
+                            if value is not None:
+                                summary_list.append((label, f"{value} {unit}"))
+                        
+                        df_summary = pd.DataFrame(summary_list, columns=['項目', '設定・結果'])
                         df_summary.to_excel(writer, sheet_name='サマリー', index=False)
                         summary_worksheet = writer.sheets['サマリー']; summary_worksheet.set_column('A:A', 35); summary_worksheet.set_column('B:B', 30)
                         
@@ -486,13 +509,43 @@ def main():
     if st.session_state.processing_complete:
         st.success("✅ データチェックが完了しました。")
         st.header("📊 チェック結果サマリー")
+        
+        # --- 画面サマリー表示を修正 ---
         summary_df_list = []
-        info_labels = ["前期末従業員数", "当期末従業員数", "在籍者数", "当期退職者数"]
-        for label, value in st.session_state.summary_metrics.items():
-            unit = "人" if label in info_labels else "件"
-            summary_df_list.append({"項目": label, "件数/人数": f"{value} {unit}"})
+        
+        # 表示順とラベル、内部キーのマッピングを定義
+        summary_display_order = [
+            ('前期従業員データ数', '前期従業員データ数', '人'),
+            ('当期従業員データ数', '当期従業員データ数', '人'),
+            ('当期退職者データ数', '当期退職者データ数', '人'),
+            ('キー重複', 'キー重複', '件'),
+            ('基本情報変更エラー', '基本情報変更エラー', '件'),
+            ('日付妥当性エラー', '日付妥当性エラー', '件'),
+            ('在籍者数（凸合）', '在籍者数', '人'),
+            ('退職者候補（不凸合＝前期のみ）', '退職者候補（不突合）' if st.session_state.summary_metrics.get('退職者候補（不突合）') is not None else '退職者候補', '人'),
+            ('入社者候補（不凸合＝当期のみ）', '入社者候補', '人'),
+            ('退職者データ過剰（不凸合＝前期なし）', '退職者データ過剰', '人'),
+            ('マッチした退職者（凸合）', 'マッチした退職者', '人'),
+            ('給与減額エラー(1)', '給与減額エラー(1)', '件'),
+            ('給与増加率エラー(1)', '給与増加率エラー(1)', '件'),
+            ('累計給与エラー(1-1)', '累計給与エラー(1-1)', '件'),
+            ('累計給与エラー(1-2)', '累計給与エラー(1-2)', '件'),
+            ('給与減額エラー(3)', '給与減額エラー(3)', '件'),
+            ('給与増加率エラー(3)', '給与増加率エラー(3)', '件'),
+            ('累計給与エラー(3-1)', '累計給与エラー(3-1)', '件'),
+            ('累計給与エラー(3-2)', '累計給与エラー(3-2)', '件'),
+        ]
+
+        for label, key, unit in summary_display_order:
+            value = st.session_state.summary_metrics.get(key)
+            # 値が存在する場合（0を含む）のみリストに追加
+            if value is not None:
+                summary_df_list.append({"項目": label, "件数/人数": f"{value} {unit}"})
+
         if summary_df_list:
-            df_summary_display = pd.DataFrame(summary_df_list); st.table(df_summary_display)
+            df_summary_display = pd.DataFrame(summary_df_list)
+            st.table(df_summary_display)
+            
         if st.session_state.processed_data:
             st.download_button(label="📥 チェック結果（Excelファイル）をダウンロード", data=st.session_state.processed_data, file_name="check_result.xlsx", mime="application/vnd.openxmlformats-officedocument-spreadsheetml.sheet", use_container_width=True)
 
