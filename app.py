@@ -262,19 +262,18 @@ def main():
                         df_retire = find_header_and_read_excel(file_retire, sheet_retire, keywords=keywords_retire)
                         if df_retire is not None: df_retire = rename_df_columns(df_retire, selections_retire)
 
+                    # --- [修正点 1] ---
+                    # 加入年月日を独立してチェックするため、ここでのマージ処理を削除
                     st.info("ステップ1.8/7: 日付列を日付形式に変換しています...")
                     date_cols_to_convert = [INTERNAL_COLS["hire_date"], INTERNAL_COLS["enroll_date"], INTERNAL_COLS["birth_date"], INTERNAL_COLS["retire_date"]]
                     for df in [df_prev, df_curr, df_retire]:
                         if df is not None:
                             for col in date_cols_to_convert:
-                                if col in df.columns: df[col] = pd.to_datetime(df[col].astype(str), errors='coerce')
-                            if INTERNAL_COLS["enroll_date"] in df.columns:
-                                if INTERNAL_COLS["hire_date"] in df.columns:
-                                    df[INTERNAL_COLS["hire_date"]].fillna(df[INTERNAL_COLS["enroll_date"]], inplace=True)
-                                else:
-                                    df.rename(columns={INTERNAL_COLS["enroll_date"]: INTERNAL_COLS["hire_date"]}, inplace=True)
-                                df.drop(columns=[INTERNAL_COLS["enroll_date"]], inplace=True, errors='ignore')
+                                if col in df.columns:
+                                    df[col] = pd.to_datetime(df[col].astype(str), errors='coerce')
 
+                    # --- [修正点 2] ---
+                    # マッチングキー生成ロジックを修正
                     st.info("ステップ2/7: マッチングキーを決定しています...")
                     use_emp_id_key = (INTERNAL_COLS["emp_id"] in df_prev.columns and INTERNAL_COLS["emp_id"] in df_curr.columns)
                     dataframes = {'前期末': df_prev, '当期末': df_curr}
@@ -284,30 +283,66 @@ def main():
                     key_col_name = '_key'
                     for name, df in dataframes.items():
                         if not use_emp_id_key:
-                             if not {INTERNAL_COLS["hire_date"], INTERNAL_COLS["birth_date"]}.issubset(df.columns):
-                                st.error(f"🚫 **処理停止: 代替キーに必要な列が見つかりませんでした。**", icon="🚨"); st.warning(f"「{name}」データで、代替キーの列マッピングが正しく行われているか確認してください。"); st.stop()
-                             df[key_col_name] = df[INTERNAL_COLS["hire_date"]].dt.strftime('%Y%m%d').fillna('NODATE') + '_' + df[INTERNAL_COLS["birth_date"]].dt.strftime('%Y%m%d').fillna('NODATE')
-                        else: df[key_col_name] = df[INTERNAL_COLS["emp_id"]].astype(str)
+                            hire_date_col = INTERNAL_COLS["hire_date"]
+                            enroll_date_col = INTERNAL_COLS["enroll_date"]
+                            birth_date_col = INTERNAL_COLS["birth_date"]
+
+                            date_for_key_exists = (hire_date_col in df.columns or enroll_date_col in df.columns)
+                            if not (date_for_key_exists and birth_date_col in df.columns):
+                                st.error(f"🚫 **処理停止: 代替キーに必要な列が見つかりませんでした。**", icon="🚨"); st.warning(f"「{name}」データで、「入社年月日」または「加入年月日」、および「生年月日」の列マッピングが正しく行われているか確認してください。"); st.stop()
+                            
+                            if hire_date_col in df.columns and enroll_date_col in df.columns:
+                                key_date = df[hire_date_col].fillna(df[enroll_date_col])
+                            elif hire_date_col in df.columns:
+                                key_date = df[hire_date_col]
+                            else:
+                                key_date = df[enroll_date_col]
+
+                            df[key_col_name] = key_date.dt.strftime('%Y%m%d').fillna('NODATE') + '_' + df[birth_date_col].dt.strftime('%Y%m%d').fillna('NODATE')
+                        else: 
+                            df[key_col_name] = df[INTERNAL_COLS["emp_id"]].astype(str)
                     key_type = "従業員番号" if use_emp_id_key else "入社年月日/加入年月日 + 生年月日"; st.success(f"マッチングキーとして '{key_type}' を使用します。")
                     
                     results = {}; st.info("ステップ3/7: 基本エラーチェック...")
                     for name, df in dataframes.items():
                         duplicates = df[df[key_col_name].duplicated(keep=False)]; results[f'キー重複_{name}'] = duplicates.sort_values(by=key_col_name)
                     
+                    # --- [修正点 3] ---
+                    # 加入年月日のエラーチェックを追加
                     for name, df, relevant_date, date_type in [('前期末', df_prev, prev_period_end_date_ts, '前期末日'), ('当期末', df_curr, base_date_ts, '計算基準日')]:
                         if df is None: continue
                         temp_errors = []
-                        if {INTERNAL_COLS["hire_date"], INTERNAL_COLS["birth_date"]}.issubset(df.columns):
-                            df_copy = df.copy(); valid_dates = df_copy.dropna(subset=[INTERNAL_COLS["hire_date"], INTERNAL_COLS["birth_date"]])
-                            if not valid_dates.empty:
-                                age = (valid_dates[INTERNAL_COLS["hire_date"]] - valid_dates[INTERNAL_COLS["birth_date"]]).dt.days / 365.25
-                                invalid_age_df = df.loc[valid_dates[(age < 15) | (age >= 90)].index].copy()
-                                if not invalid_age_df.empty:
-                                    invalid_age_df['エラー理由'] = '入社時年齢が15歳未満または90歳以上'; temp_errors.append(invalid_age_df)
+                        
+                        # --- 入社年月日のチェック (既存) ---
                         if INTERNAL_COLS["hire_date"] in df.columns:
-                             invalid_hire_date_df = df[df[INTERNAL_COLS["hire_date"]] > relevant_date].copy()
-                             if not invalid_hire_date_df.empty:
+                            # 入社時年齢
+                            if INTERNAL_COLS["birth_date"] in df.columns:
+                                df_copy = df.copy(); valid_dates = df_copy.dropna(subset=[INTERNAL_COLS["hire_date"], INTERNAL_COLS["birth_date"]])
+                                if not valid_dates.empty:
+                                    age = (valid_dates[INTERNAL_COLS["hire_date"]] - valid_dates[INTERNAL_COLS["birth_date"]]).dt.days / 365.25
+                                    invalid_age_df = df.loc[valid_dates[(age < 15) | (age >= 90)].index].copy()
+                                    if not invalid_age_df.empty:
+                                        invalid_age_df['エラー理由'] = '入社時年齢が15歳未満または90歳以上'; temp_errors.append(invalid_age_df)
+                            # 未来の入社日
+                            invalid_hire_date_df = df[df[INTERNAL_COLS["hire_date"]] > relevant_date].copy()
+                            if not invalid_hire_date_df.empty:
                                  invalid_hire_date_df['エラー理由'] = f'入社日が{date_type}({relevant_date.date()})より後'; temp_errors.append(invalid_hire_date_df)
+
+                        # --- 加入年月日のチェック (新規追加) ---
+                        if INTERNAL_COLS["enroll_date"] in df.columns:
+                            # 加入時年齢
+                            if INTERNAL_COLS["birth_date"] in df.columns:
+                                df_copy = df.copy(); valid_dates = df_copy.dropna(subset=[INTERNAL_COLS["enroll_date"], INTERNAL_COLS["birth_date"]])
+                                if not valid_dates.empty:
+                                    age = (valid_dates[INTERNAL_COLS["enroll_date"]] - valid_dates[INTERNAL_COLS["birth_date"]]).dt.days / 365.25
+                                    invalid_age_df = df.loc[valid_dates[(age < 15) | (age >= 90)].index].copy()
+                                    if not invalid_age_df.empty:
+                                        invalid_age_df['エラー理由'] = '加入時年齢が15歳未満または90歳以上'; temp_errors.append(invalid_age_df)
+                            # 未来の加入日
+                            invalid_enroll_date_df = df[df[INTERNAL_COLS["enroll_date"]] > relevant_date].copy()
+                            if not invalid_enroll_date_df.empty:
+                                invalid_enroll_date_df['エラー理由'] = f'加入日が{date_type}({relevant_date.date()})より後'; temp_errors.append(invalid_enroll_date_df)
+
                         if temp_errors:
                             df_with_reasons = pd.concat(temp_errors).drop_duplicates(subset=[key_col_name]); results[f'日付妥当性エラー_{name}'] = df_with_reasons
                     
@@ -329,8 +364,10 @@ def main():
                     st.info("ステップ4.5/7: 在籍者の基本情報変更チェック...")
                     bdate_prev, bdate_curr = f'{INTERNAL_COLS["birth_date"]}_前期', f'{INTERNAL_COLS["birth_date"]}_当期'; hdate_prev, hdate_curr = f'{INTERNAL_COLS["hire_date"]}_前期', f'{INTERNAL_COLS["hire_date"]}_当期'
                     if all(c in continuing_employees.columns for c in [bdate_prev, bdate_curr, hdate_prev, hdate_curr]):
-                        changed_birth_date = continuing_employees[bdate_prev] != continuing_employees[bdate_curr]
-                        changed_hire_date = continuing_employees[hdate_prev] != continuing_employees[hdate_curr]
+                        # NaTを考慮した比較
+                        changed_birth_date = continuing_employees[bdate_prev].ne(continuing_employees[bdate_curr]) & ~(continuing_employees[bdate_prev].isna() & continuing_employees[bdate_curr].isna())
+                        changed_hire_date = continuing_employees[hdate_prev].ne(continuing_employees[hdate_curr]) & ~(continuing_employees[hdate_prev].isna() & continuing_employees[hdate_curr].isna())
+                        
                         changed_df = continuing_employees[changed_birth_date | changed_hire_date].copy()
                         changed_df['エラー理由'] = '前期と当期で基本情報(生年月日 or 入社日)が不一致'
                         results['基本情報変更エラー'] = changed_df
@@ -423,7 +460,6 @@ def main():
                         summary_list.extend([('--- アップロードファイル ---', ''), ('前期末従業員データ', file_prev.name), ('当期末従業員データ', file_curr.name)])
                         if file_retire and retire_file_is_used: summary_list.append(('当期退職者データ', file_retire.name))
                         summary_list.append(('', ''))
-                        # ... (中略: ファイル設定、列名設定などのサマリーは変更なし) ...
                         summary_list.append(('--- ファイル設定 ---', ''))
                         summary_list.append(('計算基準日', base_date.strftime('%Y/%m/%d')))
                         summary_list.extend([('前期末ヘッダーキーワード1', keyword_prev_1), ('前期末ヘッダーキーワード2', keyword_prev_2)])
@@ -439,7 +475,7 @@ def main():
                         if retire_file_is_used:
                             summary_list.append(('--- 列名設定：退職者 ---', '')); summary_list.extend([('従業員番号', col_emp_id_retire), ('入社年月日', col_hire_date_retire), ('加入年月日', col_enroll_date_retire), ('生年月日', col_birth_date_retire), ('退職日', col_retire_date_retire)])
                         summary_list.append(('', ''))
-                        summary_list.append(('--- 追加エラーチェック設定 (給与1,2) ---', '')); summary_list.extend([('給я減額チェック(1)', '有効' if check_salary_decrease_1 else '無効'), ('給与増加率チェック(1)', '有効' if check_salary_increase_1 else '無効')])
+                        summary_list.append(('--- 追加エラーチェック設定 (給与1,2) ---', '')); summary_list.extend([('給与減額チェック(1)', '有効' if check_salary_decrease_1 else '無効'), ('給与増加率チェック(1)', '有効' if check_salary_increase_1 else '無効')])
                         if check_salary_increase_1: summary_list.append(('└ 増加率(x1)%', increase_rate_x1))
                         summary_list.extend([('累計給与チェック(1-1)', '有効' if check_cumulative_salary_1 else '無効'), ('累計給与チェック(1-2)', '有効' if check_cumulative_salary_2 else '無効')])
                         if check_cumulative_salary_1 or check_cumulative_salary_2: summary_list.extend([('└ 月数(y1)', months_y1), ('└ 許容率(z1)%', allowance_rate_z1)])
@@ -450,10 +486,7 @@ def main():
                         if check_cumulative_salary_3 or check_cumulative_salary_4: summary_list.extend([('└ 月数(y3)', months_y3), ('└ 許容率(z3)%', allowance_rate_z3)])
                         summary_list.append(('', ''))
                         
-                        # --- Excelサマリーシートの表示項目を修正 ---
                         summary_list.append(('--- チェック結果サマリー ---', ''))
-                        
-                        # 表示順とラベルを定義
                         summary_order = [
                             ('前期従業員データ数', '前期従業員データ数', '人'), ('当期従業員データ数', '当期従業員データ数', '人'),
                             ('当期退職者データ数', '当期退職者データ数', '人'), ('キー重複', 'キー重複', '件'),
@@ -510,10 +543,7 @@ def main():
         st.success("✅ データチェックが完了しました。")
         st.header("📊 チェック結果サマリー")
         
-        # --- 画面サマリー表示を修正 ---
         summary_df_list = []
-        
-        # 表示順とラベル、内部キーのマッピングを定義
         summary_display_order = [
             ('前期従業員データ数', '前期従業員データ数', '人'),
             ('当期従業員データ数', '当期従業員データ数', '人'),
@@ -538,7 +568,6 @@ def main():
 
         for label, key, unit in summary_display_order:
             value = st.session_state.summary_metrics.get(key)
-            # 値が存在する場合（0を含む）のみリストに追加
             if value is not None:
                 summary_df_list.append({"項目": label, "件数/人数": f"{value} {unit}"})
 
